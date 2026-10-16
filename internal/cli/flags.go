@@ -128,7 +128,13 @@ func (f *filterFlags) toFilter(now time.Time) (timeline.Filter, error) {
 		return filter, exit.Usage("--format must be text or json, got %q", f.Format)
 	}
 	filter.Keyword = f.Query
-	filter.BootID = f.Boot
+	if f.Boot != "" {
+		bootID, err := event.NormalizeBootID(f.Boot)
+		if err != nil {
+			return filter, exit.Usage("--boot %q is not a boot id: %v", f.Boot, err)
+		}
+		filter.BootID = bootID
+	}
 	return filter, nil
 }
 

@@ -132,7 +132,10 @@ func journalArgs(q source.Query) []string {
 		args = append(args, "--until", timeparse.FormatJournalArg(q.Until))
 	}
 	if q.BootID != "" {
-		args = append(args, "-b", q.BootID)
+		// journalctl accepts the 32 hex form only. The event model carries the
+		// dashed uuid a reader recognizes, so the adapter undoes its own
+		// formatting here instead of leaking it to journalctl.
+		args = append(args, "-b", strings.ToLower(strings.ReplaceAll(q.BootID, "-", "")))
 	}
 	if q.Limit > 0 {
 		args = append(args, "-n", strconv.Itoa(q.Limit))

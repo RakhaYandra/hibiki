@@ -288,6 +288,41 @@ func TestCLICrossBootEventsAreNotOrderedByMonotonic(t *testing.T) {
 	}
 }
 
+func TestCLIBootFilterAcceptsEitherBootIDForm(t *testing.T) {
+	// The fixture holds boot A (all a) and boot B (all b), the second one
+	// earlier in monotonic time but later in realtime.
+	forms := []string{
+		"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+	}
+	for _, boot := range forms {
+		res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "cross-boot.jsonl")}),
+			"timeline", "--since", windowSince, "--until", windowUntil, "--boot", boot, "--format", "json")
+		if res.code != 0 {
+			t.Fatalf("--boot %s: exit = %d, stderr = %s", boot, res.code, res.stderr)
+		}
+		env := decodeEnvelope(t, res.stdout)
+		if len(env.Events) != 1 {
+			t.Fatalf("--boot %s returned %d events, want only boot A", boot, len(env.Events))
+		}
+		if !strings.Contains(env.Events[0].Message, "boot A") {
+			t.Errorf("--boot %s returned %q", boot, env.Events[0].Message)
+		}
+	}
+}
+
+func TestCLIRejectsAValueThatIsNotABootID(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "cross-boot.jsonl")}),
+		"timeline", "--since", windowSince, "--until", windowUntil, "--boot", "0")
+	if res.code != 2 {
+		t.Fatalf("exit = %d, want 2 (stdout = %s, stderr = %s)", res.code, res.stdout, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "boot") {
+		t.Errorf("stderr must name the flag: %q", res.stderr)
+	}
+}
+
 func TestCLISIGINTCancelsWithinTwoSeconds(t *testing.T) {
 	dir := t.TempDir()
 	stub := filepath.Join(dir, "journalctl")

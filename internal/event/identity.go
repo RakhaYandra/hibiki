@@ -1,8 +1,10 @@
 package event
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
+	"strings"
 )
 
 // A journal cursor is unique inside one journal only, not across machines or
@@ -27,6 +29,29 @@ func shortHash(parts ...string) string {
 		h.Write([]byte(p))
 	}
 	return fmt.Sprintf("%016x", h.Sum64())[:12]
+}
+
+// NormalizeBootID returns the dashed lowercase form of a boot id. The journal
+// stores 32 hex digits, the event model carries the dashed uuid a reader
+// recognizes, and journalctl accepts only the plain form, so both directions
+// agree here instead of at every call site.
+func NormalizeBootID(id string) (string, error) {
+	plain := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(id), "-", ""))
+	if len(plain) != 32 || !isHex(plain) {
+		return "", errors.New("a boot id is 32 hex digits, optionally written with dashes")
+	}
+	return plain[0:8] + "-" + plain[8:12] + "-" + plain[12:16] + "-" + plain[16:20] + "-" + plain[20:], nil
+}
+
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < '0' || c > '9' {
+			if c < 'a' || c > 'f' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func derefString(s *string) string {

@@ -17,6 +17,37 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/source"
 )
 
+// journalctl takes a boot id as 32 hex digits, while the event model carries the
+// dashed uuid a person reads. Handing journalctl the dashed form makes it refuse
+// the whole query with "Failed to add match", which is how the live inspect
+// windows were silently empty before this.
+func TestJournalArgsAcceptTheEventModelBootID(t *testing.T) {
+	const plain = "30107f27d01e4e42b24846e4da81db1a"
+	cases := []struct {
+		bootID string
+		want   string
+	}{
+		{"30107f27-d01e-4e42-b248-46e4da81db1a", plain},
+		{plain, plain},
+		{"30107F27-D01E-4E42-B248-46E4DA81DB1A", plain},
+	}
+	for _, c := range cases {
+		args := journalArgs(source.Query{BootID: c.bootID})
+		if got := argValue(args, "-b"); got != c.want {
+			t.Errorf("journalArgs(%q) passed -b %q, want %q", c.bootID, got, c.want)
+		}
+	}
+}
+
+func argValue(args []string, name string) string {
+	for i, a := range args {
+		if a == name && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
 func stubJournal(t *testing.T, script string, capture *[]string) {
 	t.Helper()
 	prev := commandContext
@@ -52,7 +83,9 @@ func TestAdapterUsesArgArrayWithoutShell(t *testing.T) {
 		t.Fatalf("argv = %v", argv)
 	}
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"--output=json", "--no-pager", "--since", "@1792142671.274265", "-b", "30107f27-d01e-4e42-b248-46e4da81db1a", "-n", "5"} {
+	// journalctl takes the plain 32 hex form, so the dashed uuid of the event
+	// model must not reach it.
+	for _, want := range []string{"--output=json", "--no-pager", "--since", "@1792142671.274265", "-b", "30107f27d01e4e42b24846e4da81db1a", "-n", "5"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("argv %q must contain %q", joined, want)
 		}

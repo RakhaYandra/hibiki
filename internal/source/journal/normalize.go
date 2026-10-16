@@ -33,7 +33,7 @@ func Normalize(fields map[string]string) (event.Event, error) {
 	src := event.Source{
 		Type:   sourceType,
 		Host:   fields["_HOSTNAME"],
-		BootID: optional(uuidWithDashes(fields["_BOOT_ID"])),
+		BootID: optionalBootID(fields["_BOOT_ID"]),
 		Cursor: optional(fields["__CURSOR"]),
 	}
 	e.Source = src
@@ -128,18 +128,17 @@ func rawCopy(fields map[string]string) map[string]string {
 	return out
 }
 
-func uuidWithDashes(id string) string {
-	id = strings.TrimSpace(id)
-	if len(id) != 32 || strings.ContainsRune(id, '-') {
-		return id
+func optionalBootID(raw string) *string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
 	}
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
-			return id
-		}
+	if id, err := event.NormalizeBootID(raw); err == nil {
+		return optional(id)
 	}
-	return id[0:8] + "-" + id[8:12] + "-" + id[12:16] + "-" + id[16:20] + "-" + id[20:]
+	// A source value that is not a uuid is kept as it came, so nothing read from
+	// the journal is lost.
+	return optional(raw)
 }
 
 func plausibleRealtime(us int64) bool {

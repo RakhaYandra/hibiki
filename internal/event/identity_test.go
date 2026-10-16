@@ -42,3 +42,29 @@ func TestIDForWithoutCursorIsDeterministic(t *testing.T) {
 		t.Fatal("IDForFallback must include every part")
 	}
 }
+
+func TestNormalizeBootIDAcceptsEveryFormTheUserHas(t *testing.T) {
+	const want = "30107f27-d01e-4e42-b248-46e4da81db1a"
+	cases := []string{
+		"30107f27-d01e-4e42-b248-46e4da81db1a",
+		"30107f27d01e4e42b24846e4da81db1a",
+		"30107F27-D01E-4E42-B248-46E4DA81DB1A",
+		"  30107f27d01e4e42b24846e4da81db1a  ",
+	}
+	for _, in := range cases {
+		got, err := NormalizeBootID(in)
+		if err != nil {
+			t.Errorf("NormalizeBootID(%q) failed: %v", in, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("NormalizeBootID(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	for _, bad := range []string{"", "0", "0x30107f27d01e4e42b24846e4da81db1a", "30107f27d01e4e42b24846e4da81db1", "zzzzzzzzd01e4e42b24846e4da81db1a"} {
+		if _, err := NormalizeBootID(bad); err == nil {
+			t.Errorf("NormalizeBootID(%q) must fail", bad)
+		}
+	}
+}
