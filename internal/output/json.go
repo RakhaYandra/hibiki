@@ -2,6 +2,7 @@ package output
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -61,7 +62,10 @@ func RenderJSON(w io.Writer, res timeline.Result) error {
 	if n := len(head); n == 0 || head[n-1] != '}' {
 		return errors.New("cannot render the envelope head")
 	}
-	head[len(head)-1] = ','
+	// Drop the closing brace and the newline before it, then the events array
+	// closes the object.
+	head = bytes.TrimRight(head[:len(head)-1], "\n")
+	head = append(head, ',')
 
 	out := bufio.NewWriter(w)
 	if _, err := out.Write(head); err != nil {
