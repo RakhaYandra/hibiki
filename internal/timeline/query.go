@@ -82,9 +82,18 @@ func Run(ctx context.Context, srcs []source.Source, f Filter, limit int, after s
 	}
 	defer closeIterators()
 
+	afterEvent, err := decodeAfter(after)
+	if err != nil {
+		return Result{}, err
+	}
+	if limit <= 0 {
+		res.AddLimitation("result_not_limited")
+	}
+
+	var last *event.Event
 	for open.Len() > 0 {
 		head := heap.Pop(&open).(*mergeCursor)
-		res.Events = append(res.Events, head.ev)
+		ev := head.ev
 
 		next, err := head.it.Next(ctx)
 		switch {
@@ -95,8 +104,41 @@ func Run(ctx context.Context, srcs []source.Source, f Filter, limit int, after s
 		default:
 			res.AddLimitation("source_failed_midstream:" + head.name)
 		}
+
+		if !match(f, ev) {
+			continue
+		}
+		if afterEvent != nil && !orderLess(*afterEvent, ev) {
+			continue
+		}
+		if limit > 0 && len(res.Events) >= limit {
+			res.Truncated = true
+			break
+		}
+		res.Events = append(res.Events, ev)
+		updateCoverage(&res, ev)
+		last = &ev
+	}
+	// A cursor is only useful when something is left to fetch.
+	if res.Truncated && last != nil {
+		res.NextCursor = EncodeCursor(*last)
 	}
 	return res, nil
+}
+
+// Coverage describes the range the returned events actually prove. It is never
+// copied from the filter: that would claim coverage the query did not observe.
+func updateCoverage(res *Result, e event.Event) {
+	if e.TimestampUnixUS == 0 {
+		return
+	}
+	t := time.UnixMicro(e.TimestampUnixUS).UTC()
+	if res.CoveredSince.IsZero() || t.Before(res.CoveredSince) {
+		res.CoveredSince = t
+	}
+	if t.After(res.CoveredUntil) {
+		res.CoveredUntil = t
+	}
 }
 
 type mergeCursor struct {
