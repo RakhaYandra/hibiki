@@ -18,6 +18,8 @@ func NewRootCmd() *cobra.Command {
 		newTimelineCmd(),
 		newEventsCmd(),
 		newInspectCmd(),
+		newSourcesCmd(),
+		newDoctorCmd(),
 		newVersionCmd(),
 	)
 	return root

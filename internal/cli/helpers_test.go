@@ -9,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RakhaYandra/hibiki/internal/diagnostics"
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/RakhaYandra/hibiki/internal/timeline"
+	"github.com/spf13/cobra"
 )
 
 // testNow is the clock every command test runs on, so windows and events are
@@ -89,10 +91,11 @@ func manyEvents(n int) []event.Event {
 }
 
 type cliDeps struct {
-	sources   []source.Source
-	unitState func(ctx context.Context, unit string, userScope bool) (string, bool, error)
-	now       time.Time
-	save      func(res timeline.Result) (string, error)
+	sources    []source.Source
+	unitState  func(ctx context.Context, unit string, userScope bool) (string, bool, error)
+	now        time.Time
+	save       func(res timeline.Result) (string, error)
+	doctorDeps func(cmd *cobra.Command) diagnostics.Deps
 }
 
 func installDeps(t *testing.T, d cliDeps) {
@@ -101,7 +104,7 @@ func installDeps(t *testing.T, d cliDeps) {
 	if os.Getenv("XDG_CACHE_HOME") == "" {
 		t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	}
-	prevSources, prevUnit, prevNow, prevSave := newSources, lookupUnit, nowFunc, saveSnapshot
+	prevSources, prevUnit, prevNow, prevSave, prevDoctor := newSources, lookupUnit, nowFunc, saveSnapshot, newDoctorDeps
 	if d.sources != nil {
 		newSources = func() []source.Source { return d.sources }
 	}
@@ -115,7 +118,12 @@ func installDeps(t *testing.T, d cliDeps) {
 	if d.save != nil {
 		saveSnapshot = d.save
 	}
-	t.Cleanup(func() { newSources, lookupUnit, nowFunc, saveSnapshot = prevSources, prevUnit, prevNow, prevSave })
+	if d.doctorDeps != nil {
+		newDoctorDeps = d.doctorDeps
+	}
+	t.Cleanup(func() {
+		newSources, lookupUnit, nowFunc, saveSnapshot, newDoctorDeps = prevSources, prevUnit, prevNow, prevSave, prevDoctor
+	})
 }
 
 type cliResult struct {
