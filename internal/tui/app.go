@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,7 +33,6 @@ type Options struct {
 
 type Model struct {
 	deps Deps
-	opts Options
 
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -63,7 +63,6 @@ type Model struct {
 func New(deps Deps, opts Options) Model {
 	return Model{
 		deps:   deps,
-		opts:   opts,
 		ctx:    context.Background(),
 		filter: opts.Filter,
 		limit:  opts.Limit,
@@ -83,15 +82,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
-		if msg.String() == "q" || msg.String() == "ctrl+c" {
+		switch msg.String() {
+		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "j", "down":
+			m.moveSelection(1)
+		case "k", "up":
+			m.moveSelection(-1)
+		case "g":
+			m.moveSelection(-len(m.events))
+		case "G":
+			m.moveSelection(len(m.events))
 		}
 	}
 	return m, nil
 }
 
 func (m Model) View() string {
-	return m.timelineView()
+	return strings.Join([]string{m.headerView(), m.bodyView(), m.footerView()}, "\n")
+}
+
+func (m Model) bodyView() string {
+	switch {
+	case m.err != nil:
+		return m.errorView()
+	case len(m.events) > 0:
+		return m.timelineView()
+	case m.loading:
+		return loadingNote
+	}
+	return m.emptyState()
 }
 
 func Run(ctx context.Context, deps Deps, opts Options, in io.Reader, out io.Writer) error {
