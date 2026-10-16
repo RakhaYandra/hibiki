@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -212,12 +211,17 @@ func unreadableSourceError(res timeline.Result) error {
 }
 
 func writeEnvelopeFile(path string, res timeline.Result) error {
-	data, err := json.MarshalIndent(output.NewEnvelope(res), "", "  ")
+	// Streamed to the file for the same reason the JSON output is streamed: a
+	// second copy of the whole result must not live in memory (PRD 14).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
+		return fmt.Errorf("cannot write %s: %w", path, err)
+	}
+	if err := output.RenderJSON(f, res); err != nil {
+		f.Close()
 		return fmt.Errorf("cannot encode the result: %w", err)
 	}
-	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := f.Close(); err != nil {
 		return fmt.Errorf("cannot write %s: %w", path, err)
 	}
 	return nil

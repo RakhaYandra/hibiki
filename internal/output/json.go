@@ -1,7 +1,9 @@
 package output
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"time"
 
@@ -36,10 +38,76 @@ type Envelope struct {
 	Events        []event.Event  `json:"events"`
 }
 
+// RenderJSON streams the envelope. encoding/json builds the whole document in
+// one buffer before writing a byte, which with ten thousand events means a
+// second copy of the result and the peak RSS of the command (PRD 14). Events is
+// the last field, so the array is written one event at a time.
 func RenderJSON(w io.Writer, res timeline.Result) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(NewEnvelope(res))
+	env := NewEnvelope(res)
+
+	head, err := json.MarshalIndent(envelopeHead{
+		SchemaVersion: env.SchemaVersion,
+		GeneratedAt:   env.GeneratedAt,
+		CoveredSince:  env.CoveredSince,
+		CoveredUntil:  env.CoveredUntil,
+		Truncated:     env.Truncated,
+		NextCursor:    env.NextCursor,
+		Sources:       env.Sources,
+		Limitations:   env.Limitations,
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+	if n := len(head); n == 0 || head[n-1] != '}' {
+		return errors.New("cannot render the envelope head")
+	}
+	head[len(head)-1] = ','
+
+	out := bufio.NewWriter(w)
+	if _, err := out.Write(head); err != nil {
+		return err
+	}
+	if _, err := out.WriteString("\n  \"events\": ["); err != nil {
+		return err
+	}
+	for i, e := range env.Events {
+		line, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		if i > 0 {
+			if err := out.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		if _, err := out.WriteString("\n    "); err != nil {
+			return err
+		}
+		if _, err := out.Write(line); err != nil {
+			return err
+		}
+	}
+	if len(env.Events) > 0 {
+		if _, err := out.WriteString("\n  "); err != nil {
+			return err
+		}
+	}
+	if _, err := out.WriteString("]\n}\n"); err != nil {
+		return err
+	}
+	return out.Flush()
+}
+
+// envelopeHead mirrors Envelope without the events, in the same order.
+type envelopeHead struct {
+	SchemaVersion int            `json:"schema_version"`
+	GeneratedAt   time.Time      `json:"generated_at"`
+	CoveredSince  *time.Time     `json:"covered_since"`
+	CoveredUntil  *time.Time     `json:"covered_until"`
+	Truncated     bool           `json:"truncated"`
+	NextCursor    *string        `json:"next_cursor"`
+	Sources       []SourceStatus `json:"sources"`
+	Limitations   []string       `json:"limitations"`
 }
 
 func RenderEventJSON(w io.Writer, e event.Event) error {

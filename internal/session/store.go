@@ -36,21 +36,16 @@ func Save(dir string, res timeline.Result) (string, error) {
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return "", fmt.Errorf("cannot create %s: %w", dir, err)
 	}
-	data, err := json.MarshalIndent(output.NewEnvelope(res), "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("cannot encode the query result: %w", err)
-	}
-	data = append(data, '\n')
 
 	tmp, err := os.CreateTemp(dir, "last-*.json")
 	if err != nil {
 		return "", fmt.Errorf("cannot create a snapshot in %s: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
+	if err := output.RenderJSON(tmp, res); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
-		return "", fmt.Errorf("cannot write %s: %w", tmpName, err)
+		return "", fmt.Errorf("cannot encode the query result: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)

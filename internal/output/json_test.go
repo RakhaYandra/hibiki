@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -109,6 +110,33 @@ func TestRenderJSONIsByteStable(t *testing.T) {
 	}
 	if first.String() != second.String() {
 		t.Errorf("output is not byte stable:\n%s\n%s", first.String(), second.String())
+	}
+}
+
+// The streamed document must stay the same document the Envelope type
+// describes, field for field, so the two can never drift apart.
+func TestRenderJSONStreamsTheSameDocumentAsTheEnvelope(t *testing.T) {
+	restore := nowFunc
+	nowFunc = fixedNow
+	t.Cleanup(func() { nowFunc = restore })
+
+	var streamed bytes.Buffer
+	if err := RenderJSON(&streamed, sampleResult()); err != nil {
+		t.Fatal(err)
+	}
+	whole, err := json.MarshalIndent(NewEnvelope(sampleResult()), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a, b any
+	if err := json.Unmarshal(streamed.Bytes(), &a); err != nil {
+		t.Fatalf("streamed output is not valid JSON: %v\n%s", err, streamed.String())
+	}
+	if err := json.Unmarshal(whole, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("streamed envelope differs from the envelope:\n%s\n%s", streamed.String(), whole)
 	}
 }
 
