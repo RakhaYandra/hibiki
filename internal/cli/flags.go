@@ -12,6 +12,7 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/output"
+	"github.com/RakhaYandra/hibiki/internal/session"
 	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/RakhaYandra/hibiki/internal/source/journal"
 	"github.com/RakhaYandra/hibiki/internal/source/systemd"
@@ -28,9 +29,12 @@ const (
 // Process level wiring lives behind these seams so command logic stays a pure
 // function of its flags.
 var (
-	newSources = func() []source.Source { return []source.Source{journal.New()} }
-	lookupUnit = systemd.UnitState
-	nowFunc    = time.Now
+	newSources   = func() []source.Source { return []source.Source{journal.New()} }
+	lookupUnit   = systemd.UnitState
+	nowFunc      = time.Now
+	saveSnapshot = func(res timeline.Result) (string, error) {
+		return session.Save(session.DefaultDir(), res)
+	}
 )
 
 type filterFlags struct {
@@ -147,6 +151,11 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 		return timeline.Result{}, err
 	}
 
+	// A snapshot that cannot be written never fails the query: the answer the
+	// user asked for is already in hand.
+	if _, err := saveSnapshot(res); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not save the query snapshot: %v\n", err)
+	}
 	if f.Save != "" {
 		if err := writeEnvelopeFile(f.Save, res); err != nil {
 			return res, err

@@ -17,6 +17,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(
 		newTimelineCmd(),
 		newEventsCmd(),
+		newInspectCmd(),
 		newVersionCmd(),
 	)
 	return root

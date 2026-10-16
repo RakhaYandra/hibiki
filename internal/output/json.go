@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/RakhaYandra/hibiki/internal/event"
+	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/RakhaYandra/hibiki/internal/timeline"
 )
 
@@ -68,14 +69,20 @@ func NewEnvelope(res timeline.Result) Envelope {
 		cursor := res.NextCursor
 		env.NextCursor = &cursor
 	}
-	for _, s := range res.Sources {
+	env.Sources = SourceStatuses(res.Sources)
+	return env
+}
+
+func SourceStatuses(in []source.Status) []SourceStatus {
+	out := make([]SourceStatus, 0, len(in))
+	for _, s := range in {
 		status := SourceStatus{Name: s.Name, Available: s.Available, Detail: s.Detail}
 		if s.Err != nil {
 			status.Error = s.Err.Error()
 		}
-		env.Sources = append(env.Sources, status)
+		out = append(out, status)
 	}
-	return env
+	return out
 }
 
 func sliceOrEmpty[T any](in []T) []T {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -96,7 +97,11 @@ type cliDeps struct {
 
 func installDeps(t *testing.T, d cliDeps) {
 	t.Helper()
-	prevSources, prevUnit, prevNow := newSources, lookupUnit, nowFunc
+	// Tests never read or write the developer's real cache unless they say so.
+	if os.Getenv("XDG_CACHE_HOME") == "" {
+		t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	}
+	prevSources, prevUnit, prevNow, prevSave := newSources, lookupUnit, nowFunc, saveSnapshot
 	if d.sources != nil {
 		newSources = func() []source.Source { return d.sources }
 	}
@@ -106,7 +111,11 @@ func installDeps(t *testing.T, d cliDeps) {
 	if !d.now.IsZero() {
 		nowFunc = func() time.Time { return d.now }
 	}
-	t.Cleanup(func() { newSources, lookupUnit, nowFunc = prevSources, prevUnit, prevNow })
+	saveSnapshot = func(timeline.Result) (string, error) { return "", nil }
+	if d.save != nil {
+		saveSnapshot = d.save
+	}
+	t.Cleanup(func() { newSources, lookupUnit, nowFunc, saveSnapshot = prevSources, prevUnit, prevNow, prevSave })
 }
 
 type cliResult struct {
