@@ -323,6 +323,26 @@ func TestCLIRejectsAValueThatIsNotABootID(t *testing.T) {
 	}
 }
 
+func TestCLITuiHelpListsTheFilterFlags(t *testing.T) {
+	res := runCLI(t, envWith(nil), "tui", "--help")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr = %s)", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "--since") {
+		t.Errorf("the tui must offer the same window flag: %q", res.stdout)
+	}
+}
+
+func TestCLITuiRefusesAPipedStdout(t *testing.T) {
+	res := runCLI(t, envWith(nil), "tui", "--since", windowSince)
+	if res.code != 2 {
+		t.Fatalf("exit = %d, want 2 (stdout = %s, stderr = %s)", res.code, res.stdout, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "requires a terminal") {
+		t.Errorf("stderr must say why: %q", res.stderr)
+	}
+}
+
 func TestCLISIGINTCancelsWithinTwoSeconds(t *testing.T) {
 	dir := t.TempDir()
 	stub := filepath.Join(dir, "journalctl")
