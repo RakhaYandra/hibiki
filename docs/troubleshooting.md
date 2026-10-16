@@ -6,9 +6,12 @@ An empty result is a successful query, not an error: exit code 0 and a line
 that says so.
 
 ```
-no events matched; the journal covers 2026-09-20T07:38:06Z .. 2026-10-16T10:03:23Z
-covered: (nothing)
+no events matched in the requested window
+covered: nothing observed
 ```
+
+"covered: nothing observed" is deliberate: coverage describes what the answer
+proves, and an empty answer proves nothing about the window.
 
 Check, in this order:
 
@@ -61,6 +64,19 @@ hibiki timeline --since 30m --until 10m
 ```
 
 A bad value is exit 2 and names the value it could not parse.
+
+## `--boot` takes a boot id, not an offset
+
+```bash
+hibiki timeline --since 2d --boot 30107f27-d01e-4e42-b248-46e4da81db1a
+hibiki timeline --since 2d --boot 30107f27d01e4e42b24846e4da81db1a
+```
+
+Both forms work; the value is normalized once. `hibiki timeline --boot 0` is not
+a boot id and exits 2, because journalctl's offset form (`-b -1`) cannot also be
+used as a filter on the event model, and silently returning nothing would be
+worse than saying so. Get an id from `hibiki inspect <event-id>`; the raw
+`_BOOT_ID` field is there too.
 
 ## Reading a journalctl export without the live journal
 

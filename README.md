@@ -8,11 +8,11 @@ two events near in time caused each other.
 
 ```console
 $ hibiki timeline --since 30m
-16:28:29.003 | INFO     | service     | omarchy-speaker-loudness.service | Scheduled restart job, restart counter is at 2181.
-16:28:29.004 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
-16:28:29.026 | INFO     | application | omarchy-speaker-loudness.service | /usr/bin/python3: can't open file '/home/rakha/.config/.../loudness-tracker.py'
-16:28:29.028 | WARNING  | service     | omarchy-speaker-loudness.service | Main process exited, code=exited, status=2/INVALIDARGUMENT
-covered: 2026-10-16T09:28:29.003Z .. 2026-10-16T09:28:29.028Z
+17:19:28.503 | INFO     | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3542.
+17:19:28.505 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
+17:19:28.530 | WARNING  | service     | - | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+17:19:28.531 | WARNING  | service     | - | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+covered: 2026-10-16T10:19:28.503776Z .. 2026-10-16T10:19:28.531472Z
 ```
 
 ## Install
@@ -51,6 +51,7 @@ hibiki timeline --since 1h --service sshd.service
 hibiki timeline --since 1h --category service
 hibiki timeline --since 30m --limit 100
 hibiki timeline --since 30m --format json
+hibiki timeline --since 2d --boot 30107f27-d01e-4e42-b248-46e4da81db1a
 ```
 
 The default window is the last 30 minutes and the default limit is 200 events.
@@ -59,6 +60,10 @@ timestamp, and relative spans are resolved once at the start of the query.
 
 `--limit` returns the first matching events of the window and prints a cursor to
 continue. To see the most recent events, narrow the window.
+
+`--boot` takes a boot id, dashed or as 32 hex digits, and keeps only the events
+of that boot. A value that is not a boot id is exit 2 rather than a silent empty
+answer.
 
 ### events
 
@@ -90,34 +95,48 @@ last query, so an id printed by a query can still be inspected minutes later, or
 from a file written with `--save`.
 
 ```
-Event evt_7bfa3ff5c762
-  time         2026-10-16T09:28:40.277720Z
+Event evt_bb5b9f9dbc12
+  time         2026-10-16T10:20:02.253815Z
   time_basis   realtime
-  monotonic_us 4936375957000
+  monotonic_us 8029601093
   category     service
-  severity     error
+  severity     info
   source_type  systemd-journal
+  host         host
   boot_id      30107f27-d01e-4e42-b248-46e4da81db1a
-  cursor       s=cl;i=3
-  unit         omarchy-speaker-loudness.service
-  pid          1
+  cursor       s=e49096f9...;i=1392b0;b=30107f27...;m=1de99fd45;t=65df281d997f7
+  unit         -
+  pid          1205
   comm         systemd
-  message      omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+  executable   /usr/lib/systemd/systemd
+  message      omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3557.
   correlation  none (correlation arrives in v0.3.0)
 
 Raw journal fields
-  MESSAGE                omarchy-speaker-loudness.service: Main process exited, ...
-  MESSAGE_ID             98e322203f7a4ed290d09fe03c09fe15
-  PRIORITY               3
-  ...
+  MESSAGE                omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3557.
+  MESSAGE_ID             5eb03494b6584870a536b337290809b3
+  N_RESTARTS             3557
+  PRIORITY               6
+  SYSLOG_IDENTIFIER      systemd
+  USER_UNIT              omarchy-speaker-loudness.service
+  _BOOT_ID               30107f27d01e4e42b24846e4da81db1a
+  _CMDLINE               /usr/lib/systemd/systemd --user
+  ... every other field, verbatim
 
-Before (1 events within 2m0s)
-  16:28:40.253 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
-After (0 events within 2m0s)
+Before (1 events within 5s)
+  17:19:29.505 | INFO     | service | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
+After (0 events within 5s)
+
+Sources
+  systemd-journal: ok (journal is readable)
+
+Limitations
+  no following events found within the window
 ```
 
 An empty side is stated, never left blank: the limitation line says
-`no following events found within the window`.
+`no following events found within the window`. Nothing is elided from `raw`,
+only from this example.
 
 ### sources
 
