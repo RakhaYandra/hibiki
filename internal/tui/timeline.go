@@ -73,11 +73,7 @@ func (m Model) visibleRows() []string {
 // character rather than only as an attribute, because a terminal with colours
 // turned off still has to show which event is selected.
 func (m Model) rowLine(ev event.Event, selected bool) string {
-	lead := "  "
-	if selected {
-		lead = "> "
-	}
-	return lead + m.rowStyled(ev, selected)
+	return cursorLead(selected) + m.rowStyled(ev, selected)
 }
 
 func (m Model) timelineView() string {

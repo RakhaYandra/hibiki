@@ -117,6 +117,9 @@ func (m Model) coverageLine() string {
 
 func (m Model) footerView() string {
 	var lines []string
+	if promptErr := m.promptError(); promptErr != "" {
+		lines = append(lines, promptErr)
+	}
 	switch {
 	case m.loading:
 		lines = append(lines, loadingNote)
@@ -136,7 +139,7 @@ func (m Model) footerView() string {
 }
 
 func (m Model) keyHints() string {
-	hints := []string{"j/k move", "g/G top/bottom", "q quit"}
+	hints := []string{"j/k move", "g/G top/bottom", "t window", "r refresh", "q quit"}
 	return "keys: " + strings.Join(hints, "  ")
 }
 

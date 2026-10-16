@@ -54,6 +54,8 @@ type Model struct {
 	selected int
 	offset   int
 
+	input *filterState
+
 	styles *styles
 
 	width  int
@@ -82,18 +84,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "j", "down":
-			m.moveSelection(1)
-		case "k", "up":
-			m.moveSelection(-1)
-		case "g":
-			m.moveSelection(-len(m.events))
-		case "G":
-			m.moveSelection(len(m.events))
+		return m.handleKey(msg)
+	}
+	return m, nil
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.input != nil {
+		switch m.input.mode {
+		case modeWindow:
+			return m.handleWindowKey(msg)
 		}
+	}
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		m.moveSelection(1)
+	case "k", "up":
+		m.moveSelection(-1)
+	case "g":
+		m.moveSelection(-len(m.events))
+	case "G":
+		m.moveSelection(len(m.events))
+	case "t":
+		return m.openWindowPicker(), nil
+	case "r":
+		return m, m.refresh()
 	}
 	return m, nil
 }
@@ -103,6 +120,9 @@ func (m Model) View() string {
 }
 
 func (m Model) bodyView() string {
+	if m.input != nil && (m.input.mode == modeWindow || m.input.mode == modeFilter) {
+		return m.pickerView()
+	}
 	switch {
 	case m.err != nil:
 		return m.errorView()

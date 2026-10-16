@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/source"
@@ -100,4 +103,39 @@ func manyFakeEvents(n int) []event.Event {
 		evs = append(evs, fakeEvent(base.Add(time.Duration(i)*time.Second).UnixMicro(), fmt.Sprintf("evt-%03d", i)))
 	}
 	return evs
+}
+
+func keyMsg(s string) tea.KeyMsg {
+	switch s {
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "space":
+		return tea.KeyMsg{Type: tea.KeySpace}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func press(t *testing.T, m Model, keys ...string) (Model, tea.Cmd) {
+	t.Helper()
+	var cmd tea.Cmd
+	for _, k := range keys {
+		var model tea.Model
+		model, cmd = m.Update(keyMsg(k))
+		next, ok := model.(Model)
+		if !ok {
+			t.Fatalf("Update returned %T, want tui.Model", model)
+		}
+		m = next
+	}
+	return m, cmd
 }
