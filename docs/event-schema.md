@@ -103,7 +103,7 @@ A damaged line makes the query keep the records that did decode and report
   "time_basis": "realtime",
   "source": {
     "type": "systemd-journal",
-    "host": "legion5",
+    "host": "host",
     "boot_id": "30107f27-d01e-4e42-b248-46e4da81db1a",
     "cursor": "s=cl;i=3"
   },

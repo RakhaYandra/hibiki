@@ -22,7 +22,7 @@ func TestEventJSONRoundTrip(t *testing.T) {
 		TimeBasis:            TimeBasisRealtime,
 		Source: Source{
 			Type:   "systemd-journal",
-			Host:   "legion5",
+			Host:   "host",
 			BootID: strptr("30107f27-d01e-4e42-b248-46e4da81db1a"),
 			Cursor: strptr("s=abc;i=1"),
 		},

@@ -103,7 +103,7 @@ func TestNormalizeKeepsRawForEveryInputField(t *testing.T) {
 		"__REALTIME_TIMESTAMP": "1792142671274265", "__MONOTONIC_TIMESTAMP": "4698621544",
 		"__CURSOR": "s=1;i=2", "_BOOT_ID": "30107f27d01e4e42b24846e4da81db1a",
 		"_TRANSPORT": "stdout", "_PID": "2401", "_COMM": "nginx", "_EXE": "/usr/bin/nginx",
-		"_HOSTNAME": "legion5", "PRIORITY": "3", "MESSAGE": "boom", "UNKNOWN_KEY": "kept",
+		"_HOSTNAME": "host", "PRIORITY": "3", "MESSAGE": "boom", "UNKNOWN_KEY": "kept",
 	}
 	e, err := Normalize(f)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestNormalizeKeepsRawForEveryInputField(t *testing.T) {
 			t.Errorf("raw[%q] = %q (present=%v), want %q", k, got, ok, v)
 		}
 	}
-	if e.Source.Host != "legion5" {
+	if e.Source.Host != "host" {
 		t.Errorf("host = %q", e.Source.Host)
 	}
 	if e.Process.Executable == nil || *e.Process.Executable != "/usr/bin/nginx" {
