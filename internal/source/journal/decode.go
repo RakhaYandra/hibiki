@@ -21,8 +21,11 @@ const (
 )
 
 // Decode streams JSON Lines records one at a time. The callback runs per
-// record, so a large journal is never buffered in memory.
-func Decode(r io.Reader, fn func(map[string]string) error) error {
+// record, so a large journal is never buffered in memory. A malformed record is
+// reported to onMalformed and skipped rather than stopping the stream: one
+// damaged line must not hide the rest of the journal (PRD 14). The caller
+// decides what a broken line means when nothing else decoded.
+func Decode(r io.Reader, fn func(map[string]string) error, onMalformed func(line int, err error)) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, initialRecordBuf), maxRecordBytes)
 	line := 0
@@ -34,7 +37,10 @@ func Decode(r io.Reader, fn func(map[string]string) error) error {
 		}
 		fields, err := decodeRecord(raw)
 		if err != nil {
-			return exit.BadData("malformed journal record on line %d: %v", line, err)
+			if onMalformed != nil {
+				onMalformed(line, err)
+			}
+			continue
 		}
 		if err := fn(fields); err != nil {
 			return err

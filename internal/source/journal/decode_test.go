@@ -13,7 +13,7 @@ func TestDecodeKeepsUnknownFieldsAndStreams(t *testing.T) {
 	err := Decode(strings.NewReader(strings.Join([]string{
 		`{"MESSAGE":"a","_BOOT_ID":"b","WEIRD_FIELD":"keep-me"}`,
 		`{"MESSAGE":"b","_BOOT_ID":"b"}`,
-	}, "\n")), func(f map[string]string) error { got = append(got, f); return nil })
+	}, "\n")), func(f map[string]string) error { got = append(got, f); return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,26 +31,33 @@ func TestDecodeStopsAtCallbackError(t *testing.T) {
 	err := Decode(strings.NewReader(`{"MESSAGE":"a"}`+"\n"+`{"MESSAGE":"b"}`), func(map[string]string) error {
 		seen++
 		return stop
-	})
+	}, nil)
 	if !errors.Is(err, stop) || seen != 1 {
 		t.Fatalf("err = %v, seen = %d", err, seen)
 	}
 }
 
-func TestDecodeReportsMalformedLineWithNumber(t *testing.T) {
-	err := Decode(strings.NewReader("{\"MESSAGE\":\"ok\"}\n{\"MESSAGE\":bro\n"), func(map[string]string) error { return nil })
-	var e *exit.Error
-	if !errors.As(err, &e) || e.Code != exit.CodeBadData {
-		t.Fatalf("err = %v", err)
+func TestDecodeReportsMalformedLineToTheCallback(t *testing.T) {
+	var line int
+	var got error
+	seen := 0
+	err := Decode(strings.NewReader("{\"MESSAGE\":\"ok\"}\n{\"MESSAGE\":bro\n{\"MESSAGE\":\"after\"}\n"),
+		func(map[string]string) error { seen++; return nil },
+		func(n int, merr error) { line, got = n, merr })
+	if err != nil {
+		t.Fatalf("a damaged line must not stop the stream: %v", err)
 	}
-	if !strings.Contains(err.Error(), "2") {
-		t.Errorf("the message must name the line number: %v", err)
+	if line != 2 || got == nil {
+		t.Fatalf("line = %d, err = %v", line, got)
+	}
+	if seen != 2 {
+		t.Errorf("the records around the damage must still arrive: seen = %d", seen)
 	}
 }
 
 func TestDecodeHandlesByteArrayMessage(t *testing.T) {
 	var got map[string]string
-	err := Decode(strings.NewReader(`{"MESSAGE":[104,101,108,108,111]}`), func(f map[string]string) error { got = f; return nil })
+	err := Decode(strings.NewReader(`{"MESSAGE":[104,101,108,108,111]}`), func(f map[string]string) error { got = f; return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +74,7 @@ func TestDecodeSkipsBlankLines(t *testing.T) {
 	err := Decode(strings.NewReader("\n{\"MESSAGE\":\"a\"}\n\n"), func(f map[string]string) error {
 		got = append(got, f)
 		return nil
-	})
+	}, nil)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("err = %v, len = %d", err, len(got))
 	}
@@ -75,7 +82,7 @@ func TestDecodeSkipsBlankLines(t *testing.T) {
 
 func TestDecodeRejectsOversizedRecord(t *testing.T) {
 	big := `{"MESSAGE":"` + strings.Repeat("x", 2*1024*1024) + `"}`
-	err := Decode(strings.NewReader(big), func(map[string]string) error { return nil })
+	err := Decode(strings.NewReader(big), func(map[string]string) error { return nil }, nil)
 	var e *exit.Error
 	if !errors.As(err, &e) || e.Code != exit.CodeBadData {
 		t.Fatalf("an oversized record must be bad data: %v", err)

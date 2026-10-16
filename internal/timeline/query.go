@@ -74,8 +74,10 @@ func Run(ctx context.Context, srcs []source.Source, f Filter, limit int, after s
 			continue
 		}
 		if err != nil {
-			res.Sources[len(res.Sources)-1] = source.Status{Name: status.Name, Detail: err.Error(), Err: err}
-			res.AddLimitation("source_unavailable:" + status.Name)
+			addStreamError(&res, status.Name, err, "source_unavailable:")
+			if !isLimitation(err) {
+				res.Sources[len(res.Sources)-1] = source.Status{Name: status.Name, Detail: err.Error(), Err: err}
+			}
 			continue
 		}
 		heap.Push(&open, &mergeCursor{ev: first, name: status.Name, it: it})
@@ -102,7 +104,7 @@ func Run(ctx context.Context, srcs []source.Source, f Filter, limit int, after s
 			heap.Push(&open, head)
 		case errors.Is(err, io.EOF):
 		default:
-			res.AddLimitation("source_failed_midstream:" + head.name)
+			addStreamError(&res, head.name, err, "source_failed_midstream:")
 		}
 
 		if !match(f, ev) {
@@ -139,6 +141,23 @@ func updateCoverage(res *Result, e event.Event) {
 	if t.After(res.CoveredUntil) {
 		res.CoveredUntil = t
 	}
+}
+
+// A source reports something it had to leave out through Next, because an
+// iterator has no other channel for it. That is news for the user, not a
+// failure of the query.
+func addStreamError(res *Result, name string, err error, token string) {
+	var lim *source.Limitation
+	if errors.As(err, &lim) {
+		res.AddLimitation(lim.Message)
+		return
+	}
+	res.AddLimitation(token + name)
+}
+
+func isLimitation(err error) bool {
+	var lim *source.Limitation
+	return errors.As(err, &lim)
 }
 
 type mergeCursor struct {

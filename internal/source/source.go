@@ -21,6 +21,13 @@ type Status struct {
 	Err       error
 }
 
+// Limitation is not a failure: the query still holds events, and the caller
+// reports this next to them instead of failing the whole command. A source
+// returns it when it had to leave something out.
+type Limitation struct{ Message string }
+
+func (l *Limitation) Error() string { return l.Message }
+
 type Iterator interface {
 	Next(ctx context.Context) (event.Event, error)
 	Close() error

@@ -193,6 +193,9 @@ func (it *iterator) pump() {
 	defer close(it.items)
 
 	sent := 0
+	malformed := 0
+	firstMalformedLine := 0
+	var firstMalformedErr error
 	err := Decode(it.out, func(fields map[string]string) error {
 		ev, nerr := Normalize(fields)
 		if nerr != nil {
@@ -208,8 +211,14 @@ func (it *iterator) pump() {
 		case <-it.ctx.Done():
 			return it.ctx.Err()
 		}
+	}, func(line int, merr error) {
+		if malformed == 0 {
+			firstMalformedLine, firstMalformedErr = line, merr
+		}
+		malformed++
 	})
-	if errors.Is(err, errLimitReached) {
+	limited := errors.Is(err, errLimitReached)
+	if limited {
 		it.cancel()
 		err = nil
 	}
@@ -220,6 +229,15 @@ func (it *iterator) pump() {
 		waitErr := it.cmd.Wait()
 		if err == nil && waitErr != nil && it.ctx.Err() == nil {
 			err = classify("journalctl", waitErr, it.stderr.String())
+		}
+	}
+	// Damaged lines do not end the query: the events that did decode are still
+	// an answer. Only a stream with nothing usable at all is bad data.
+	if err == nil && !limited && malformed > 0 {
+		if sent == 0 {
+			err = exit.BadData("malformed journal record on line %d: %v", firstMalformedLine, firstMalformedErr)
+		} else {
+			err = &source.Limitation{Message: "malformed_records:" + strconv.Itoa(malformed)}
 		}
 	}
 	it.setErr(err)

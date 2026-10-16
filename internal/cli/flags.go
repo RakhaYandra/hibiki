@@ -150,6 +150,12 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 	if err != nil {
 		return timeline.Result{}, err
 	}
+	// Nothing readable and nothing observed means the query has no answer to
+	// give: the source error becomes the command's error, so the exit code
+	// says why instead of reporting a quiet empty result.
+	if err := unreadableSourceError(res); err != nil {
+		return res, err
+	}
 
 	// A snapshot that cannot be written never fails the query: the answer the
 	// user asked for is already in hand.
@@ -189,6 +195,20 @@ func unitExists(ctx context.Context, unit string) bool {
 		}
 	}
 	return false
+}
+
+// Nothing readable and nothing observed means the query has no answer to give,
+// so the source error becomes the command error and the exit code stays honest.
+func unreadableSourceError(res timeline.Result) error {
+	if len(res.Events) > 0 || len(res.Sources) == 0 {
+		return nil
+	}
+	for _, s := range res.Sources {
+		if s.Available || s.Err == nil {
+			return nil
+		}
+	}
+	return res.Sources[0].Err
 }
 
 func writeEnvelopeFile(path string, res timeline.Result) error {
