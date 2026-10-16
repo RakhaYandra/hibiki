@@ -54,6 +54,8 @@ type Model struct {
 	selected int
 	offset   int
 
+	styles *styles
+
 	width  int
 	height int
 }
@@ -89,7 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return "HIBIKI / SYSTEM TIMELINE\nwindow since " + m.opts.Filter.Since.Format(time.RFC3339) + "\n"
+	return m.timelineView()
 }
 
 func Run(ctx context.Context, deps Deps, opts Options, in io.Reader, out io.Writer) error {
@@ -98,6 +100,7 @@ func Run(ctx context.Context, deps Deps, opts Options, in io.Reader, out io.Writ
 	}
 	model := New(deps, opts)
 	model.ctx = ctx
+	model.styles = newStyles(out)
 	program := tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithContext(ctx))
 	_, err := program.Run()
 	return err
