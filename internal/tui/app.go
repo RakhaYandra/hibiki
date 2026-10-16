@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/RakhaYandra/hibiki/internal/diagnostics"
 	"github.com/RakhaYandra/hibiki/internal/event"
@@ -29,6 +31,22 @@ type Deps struct {
 type Options struct {
 	Filter timeline.Filter
 	Limit  int
+}
+
+type layoutMode int
+
+const (
+	layoutSplit layoutMode = iota
+	layoutSingle
+)
+
+const splitMinWidth = 100
+
+func (m Model) layout() layoutMode {
+	if m.width >= splitMinWidth {
+		return layoutSplit
+	}
+	return layoutSingle
 }
 
 type Model struct {
@@ -141,11 +159,71 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return strings.Join([]string{m.headerView(), m.bodyView(), m.footerView()}, "\n")
+	header := strings.Split(m.headerView(), "\n")
+	footer := strings.Split(m.footerView(), "\n")
+	body := strings.Split(m.bodyView(), "\n")
+
+	rows := m.rows()
+	if rows > 0 {
+		if len(body) > rows {
+			body = body[:rows]
+		}
+		for len(body) < rows {
+			body = append(body, "")
+		}
+	}
+
+	frame := make([]string, 0, len(header)+len(body)+len(footer))
+	frame = append(frame, header...)
+	frame = append(frame, body...)
+	frame = append(frame, footer...)
+	for i, line := range frame {
+		frame[i] = truncate(line, m.width)
+	}
+	return strings.Join(frame, "\n")
+}
+
+func (m Model) rows() int {
+	if m.height <= 0 {
+		return 0
+	}
+	spare := m.height - lineCount(m.headerView()) - lineCount(m.footerView())
+	if spare < 1 {
+		return 1
+	}
+	return spare
+}
+
+func lineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+// truncate cuts plain text to a visible width and marks the cut. It is ANSI
+// aware, so a row that already carries colour loses cells, never half an escape
+// sequence.
+func truncate(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return ansi.Truncate(s, width, "...")
+}
+
+func padVisible(s string, width int) string {
+	got := lipgloss.Width(s)
+	if got >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-got)
 }
 
 func (m Model) bodyView() string {
 	if m.detail != nil {
+		if m.layout() == layoutSplit {
+			return m.splitBody()
+		}
 		return m.detailView()
 	}
 	if m.input != nil && (m.input.mode == modeWindow || m.input.mode == modeFilter) {
@@ -160,6 +238,37 @@ func (m Model) bodyView() string {
 		return loadingNote
 	}
 	return m.emptyState()
+}
+
+// splitBody puts the list beside the detail. The list takes the larger share so
+// a timestamp, a unit and part of the message still fit; below that the detail
+// keeps the 40 columns its own lines need.
+func (m Model) splitBody() string {
+	rows := m.rows()
+	if rows <= 0 {
+		return m.detailView()
+	}
+	leftWidth := m.width * 66 / 100
+	if right := m.width - leftWidth - 3; right < 40 {
+		leftWidth = m.width - 43
+	}
+	rightWidth := m.width - leftWidth - 3
+
+	left := m.listRows(leftWidth, rows)
+	right := m.detailRows(rightWidth, rows)
+
+	out := make([]string, 0, rows)
+	for i := 0; i < rows; i++ {
+		var l, r string
+		if i < len(left) {
+			l = left[i]
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		out = append(out, padVisible(l, leftWidth)+" | "+padVisible(r, rightWidth))
+	}
+	return strings.Join(out, "\n")
 }
 
 func Run(ctx context.Context, deps Deps, opts Options, in io.Reader, out io.Writer) error {

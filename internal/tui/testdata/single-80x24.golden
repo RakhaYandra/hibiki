@@ -1,0 +1,24 @@
+HIBIKI / SYSTEM TIMELINE
+window 2026-10-16T08:00:00Z .. now
+journal ok
+> 08:00:00.000  error     service      sshd.service  Failed to start the unit
+  08:00:01.000  error     service      sshd.service  Failed to start the unit
+  08:00:02.000  error     service      sshd.service  Failed to start the unit
+  08:00:03.000  error     service      sshd.service  Failed to start the unit
+  08:00:04.000  error     service      sshd.service  Failed to start the unit
+  08:00:05.000  error     service      sshd.service  Failed to start the unit
+  08:00:06.000  error     service      sshd.service  Failed to start the unit
+  08:00:07.000  error     service      sshd.service  Failed to start the unit
+  08:00:08.000  error     service      sshd.service  Failed to start the unit
+  08:00:09.000  error     service      sshd.service  Failed to start the unit
+  08:00:10.000  error     service      sshd.service  Failed to start the unit
+  08:00:11.000  error     service      sshd.service  Failed to start the unit
+  08:00:12.000  error     service      sshd.service  Failed to start the unit
+  08:00:13.000  error     service      sshd.service  Failed to start the unit
+  08:00:14.000  error     service      sshd.service  Failed to start the unit
+  08:00:15.000  error     service      sshd.service  Failed to start the unit
+  08:00:16.000  error     service      sshd.service  Failed to start the unit
+  08:00:17.000  error     service      sshd.service  Failed to start the unit
+  08:00:18.000  error     service      sshd.service  Failed to start the unit
+covered: 2026-10-16T08:00:00Z .. 2026-10-16T08:00:49Z
+keys: j/k move  g/G top/bottom  enter inspect  / search  n/N match  f filters...

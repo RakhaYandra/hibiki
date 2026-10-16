@@ -43,14 +43,29 @@ func TestHighlightMatchesLeavesOtherTextAlone(t *testing.T) {
 func TestStyledRowColoursTheSeverityCellWithoutMovingColumns(t *testing.T) {
 	m := New(Deps{}, Options{})
 	m.styles = coloredStyles()
+	m.width = 200
 	ev := manyFakeEvents(1)[0]
 
-	styled := m.rowStyled(ev, false)
-	plain := m.rowText(ev)
+	styled := m.rowLine(ev, false, m.width)
+	plain := truncate(cursorLead(false)+m.rowText(ev), m.width)
 	if styled == plain {
 		t.Fatal("styled row = plain row, want the severity cell coloured")
 	}
 	if stripANSI(styled) != plain {
 		t.Fatalf("styled = %q, want the same text with colour added", plain)
+	}
+}
+
+func TestStyledRowLeavesACutCellAlone(t *testing.T) {
+	m := New(Deps{}, Options{})
+	m.styles = coloredStyles()
+	ev := manyFakeEvents(1)[0]
+
+	narrow := m.rowLine(ev, false, 12)
+	if stripANSI(narrow) != narrow {
+		t.Fatalf("row = %q, want no colour where the cut left no cell", narrow)
+	}
+	if !strings.HasSuffix(narrow, "...") {
+		t.Fatalf("row = %q, want the cut marked", narrow)
 	}
 }

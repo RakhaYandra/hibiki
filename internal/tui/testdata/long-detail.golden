@@ -1,0 +1,24 @@
+HIBIKI / SYSTEM TIMELINE
+window 2026-10-16T08:00:00Z .. now
+journal ok
+loading: querying the journal
+unit  sshd.service
+source journal
+fields (164)
+  F000=value 0
+  F001=value 1
+  F002=value 2
+  F003=value 3
+  F004=value 4
+  F005=value 5
+  F006=value 6
+  F007=value 7
+  F008=value 8
+  F009=value 9
+  F010=value 10
+  F011=value 11
+  F012=value 12
+  F013=value 13
+  F014=value 14
+covered: 2026-10-16T08:00:00Z .. 2026-10-16T08:00:00Z
+keys: j/k scroll  g/G top/bottom  esc back  q quit

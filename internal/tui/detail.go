@@ -177,18 +177,27 @@ func (m Model) detailLines() []string {
 }
 
 func (m Model) detailView() string {
+	return strings.Join(m.detailRows(m.width, m.rows()), "\n")
+}
+
+func (m Model) detailRows(width, rows int) []string {
 	lines := m.detailLines()
-	rows := m.rows()
-	if rows <= 0 {
-		return strings.Join(lines, "\n")
+	start := 0
+	if rows > 0 {
+		if m.detail.offset < len(lines) {
+			start = m.detail.offset
+		} else {
+			start = len(lines)
+		}
+		end := start + rows
+		if end > len(lines) {
+			end = len(lines)
+		}
+		lines = lines[start:end]
 	}
-	start := m.detail.offset
-	if start > len(lines) {
-		start = len(lines)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, truncate(line, width))
 	}
-	end := start + rows
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return strings.Join(lines[start:end], "\n")
+	return out
 }

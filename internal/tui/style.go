@@ -43,6 +43,20 @@ func (s *styles) severityStyle(sev event.Severity) (lipgloss.Style, bool) {
 	return st, ok
 }
 
+// colourCell colours a fixed-width column inside an already cut plain line.
+// When the cut did not leave the whole cell, the line is returned unchanged.
+func (s *styles) colourCell(line string, start int, sev event.Severity) string {
+	end := start + severityWidth
+	if s == nil || start < 0 || len(line) < end {
+		return line
+	}
+	st, ok := s.severityStyle(sev)
+	if !ok {
+		return line
+	}
+	return line[:start] + st.Render(line[start:end]) + line[end:]
+}
+
 // highlightMatches wraps every occurrence of term, case-insensitively. A slice
 // whose fold does not round-trip (a length-changing Unicode case) is skipped one
 // byte at a time rather than cut mid-rune.

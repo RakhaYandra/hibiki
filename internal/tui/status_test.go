@@ -71,8 +71,15 @@ func TestCoverageLineRendersBothEndsAndTheEmptyCase(t *testing.T) {
 func TestLoadingAndErrorReplaceTheFooter(t *testing.T) {
 	loading := New(Deps{}, Options{})
 	loading.loading = true
-	if !strings.Contains(loading.footerView(), loadingNote) {
-		t.Errorf("footer = %q, want the loading note", loading.footerView())
+	if n := strings.Count(loading.View(), loadingNote); n != 1 {
+		t.Errorf("loading note appears %d times, want exactly one", n)
+	}
+
+	refreshing := New(Deps{}, Options{})
+	refreshing.loading = true
+	refreshing.events = manyFakeEvents(3)
+	if !strings.Contains(refreshing.footerView(), loadingNote) {
+		t.Errorf("footer = %q, want the loading note while a list is already on screen", refreshing.footerView())
 	}
 
 	failed := New(Deps{}, Options{})

@@ -125,7 +125,7 @@ func (m Model) footerView() string {
 		lines = append(lines, promptErr)
 	}
 	switch {
-	case m.loading:
+	case m.loading && len(m.events) > 0:
 		lines = append(lines, loadingNote)
 	case m.err != nil:
 	default:

@@ -1,0 +1,20 @@
+HIBIKI / SYSTEM TIMELINE
+window 2026-10-16T08:00:00Z .. now
+journal ok
+event evt-001
+time  2026-10-16T08:00:01Z   basis realtime
+category service   severity error
+message Failed to start the unit
+unit  sshd.service
+source journal
+fields (1)
+  MESSAGE=message evt-001
+before (1)
+  08:00:00.000  error     service      sshd.service  Fail...
+after (4)
+  08:00:02.000  error     service      sshd.service  Fail...
+  08:00:03.000  error     service      sshd.service  Fail...
+  08:00:04.000  error     service      sshd.service  Fail...
+  08:00:05.000  error     service      sshd.service  Fail...
+covered: 2026-10-16T08:00:00Z .. 2026-10-16T08:00:05Z
+keys: j/k scroll  g/G top/bottom  esc back  q quit
