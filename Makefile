@@ -25,8 +25,8 @@ test:
 race:
 	go test -race ./...
 
-e2e: build
-	./test/e2e.sh
+e2e:
+	go test -count=1 ./test/integration/
 
 install: build
 	install -Dm755 bin/hibiki $(PREFIX)/bin/hibiki
