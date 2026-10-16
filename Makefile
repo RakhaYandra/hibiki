@@ -10,7 +10,7 @@ build:
 release:
 	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/hibiki-linux-amd64 ./cmd/hibiki
 	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/hibiki-linux-arm64 ./cmd/hibiki
-	sha256sum dist/hibiki-linux-* > dist/SHA256SUMS
+	cd dist && sha256sum hibiki-linux-* > SHA256SUMS
 
 lint:
 	test -z "$$(gofmt -l cmd internal test)" || (gofmt -l cmd internal test && exit 1)
