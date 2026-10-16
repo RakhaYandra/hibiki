@@ -1,0 +1,2 @@
+{"__REALTIME_TIMESTAMP":"1792142671274265","__MONOTONIC_TIMESTAMP":"900000000","__CURSOR":"s=b1;i=1","_BOOT_ID":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","_TRANSPORT":"stdout","MESSAGE":"boot A late monotonic"}
+{"__REALTIME_TIMESTAMP":"1792142675274265","__MONOTONIC_TIMESTAMP":"5000000","__CURSOR":"s=b2;i=1","_BOOT_ID":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","_TRANSPORT":"stdout","MESSAGE":"boot B early monotonic"}

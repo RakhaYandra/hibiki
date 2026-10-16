@@ -1,0 +1,2 @@
+{"__REALTIME_TIMESTAMP":"1792142671274265","__CURSOR":"s=n;i=1","_TRANSPORT":"stdout","MESSAGE":[104,101,108,108,111]}
+{"__REALTIME_TIMESTAMP":"1792142671275265","__CURSOR":"s=n;i=2","_TRANSPORT":"stdout","MESSAGE":"plain ascii after the lossy record"}

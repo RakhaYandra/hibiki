@@ -30,7 +30,7 @@ func (e *Event) Validate() error {
 	if e.Source.Type == "" {
 		return fmt.Errorf("event source type is empty")
 	}
-	if e.TimestampUnixUS <= 0 {
+	if e.TimestampUnixUS <= 0 && e.TimeBasis != TimeBasisUnknown {
 		return fmt.Errorf("timestamp_unix_us %d is not a usable realtime time", e.TimestampUnixUS)
 	}
 	if !e.Category.Valid() {

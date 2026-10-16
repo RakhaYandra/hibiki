@@ -92,3 +92,13 @@ func TestLimitationConstantsAreDistinct(t *testing.T) {
 		seen[l] = true
 	}
 }
+
+func TestValidateAllowsUnknownTimeBasisWithoutTimestamp(t *testing.T) {
+	e := validEvent()
+	e.TimestampUnixUS = 0
+	e.Timestamp = time.Time{}
+	e.TimeBasis = TimeBasisUnknown
+	if err := e.Validate(); err != nil {
+		t.Fatalf("an event with no usable time is still evidence: %v", err)
+	}
+}
