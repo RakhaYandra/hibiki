@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,7 @@ func Execute() int {
 	root := NewRootCmd()
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(root.ErrOrStderr(), "hibiki:", err)
-		return 1
+		return exit.FromError(err)
 	}
 	return 0
 }
