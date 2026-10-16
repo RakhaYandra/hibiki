@@ -54,7 +54,10 @@ type Model struct {
 	selected int
 	offset   int
 
-	input *filterState
+	input        *filterState
+	detail       *detailState
+	detailToken  int
+	detailCancel context.CancelFunc
 
 	search string
 
@@ -83,6 +86,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case queryDoneMsg:
 		return m, m.applyQueryDone(msg)
+	case detailDoneMsg:
+		m.applyDetailDone(msg)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
@@ -92,6 +98,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.detail != nil {
+		return m.handleDetailKey(msg)
+	}
 	if m.input != nil {
 		switch m.input.mode {
 		case modeWindow:
@@ -125,6 +134,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openWindowPicker(), nil
 	case "r":
 		return m, m.refresh()
+	case "enter":
+		return m, m.openDetail()
 	}
 	return m, nil
 }
@@ -134,6 +145,9 @@ func (m Model) View() string {
 }
 
 func (m Model) bodyView() string {
+	if m.detail != nil {
+		return m.detailView()
+	}
 	if m.input != nil && (m.input.mode == modeWindow || m.input.mode == modeFilter) {
 		return m.pickerView()
 	}

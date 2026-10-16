@@ -153,7 +153,10 @@ func (m Model) promptLine() string {
 }
 
 func (m Model) keyHints() string {
-	hints := []string{"j/k move", "g/G top/bottom", "/ search", "n/N match", "f filters", "t window", "r refresh", "q quit"}
+	if m.detail != nil {
+		return "keys: " + strings.Join([]string{"j/k scroll", "g/G top/bottom", "esc back", "q quit"}, "  ")
+	}
+	hints := []string{"j/k move", "g/G top/bottom", "enter inspect", "/ search", "n/N match", "f filters", "t window", "r refresh", "q quit"}
 	return "keys: " + strings.Join(hints, "  ")
 }
 
