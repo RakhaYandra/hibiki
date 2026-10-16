@@ -17,6 +17,7 @@ const (
 	loadingNote    = "loading: querying the journal"
 	moreEventsNote = "more events below"
 	noCoverageNote = "covered: nothing observed"
+	noMatchNote    = "no match in the loaded events"
 )
 
 func (m Model) headerView() string {
@@ -117,6 +118,9 @@ func (m Model) coverageLine() string {
 
 func (m Model) footerView() string {
 	var lines []string
+	if prompt := m.promptLine(); prompt != "" {
+		lines = append(lines, prompt)
+	}
 	if promptErr := m.promptError(); promptErr != "" {
 		lines = append(lines, promptErr)
 	}
@@ -126,6 +130,9 @@ func (m Model) footerView() string {
 	case m.err != nil:
 	default:
 		parts := []string{m.coverageLine()}
+		if m.search != "" && !m.anyMatch() {
+			parts = append(parts, noMatchNote)
+		}
 		if m.truncated && m.cursorNext != "" {
 			parts = append(parts, moreEventsNote)
 		}
@@ -138,8 +145,15 @@ func (m Model) footerView() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m Model) promptLine() string {
+	if m.input == nil || m.input.mode != modeKeyword {
+		return ""
+	}
+	return "/" + m.input.input.View()
+}
+
 func (m Model) keyHints() string {
-	hints := []string{"j/k move", "g/G top/bottom", "t window", "r refresh", "q quit"}
+	hints := []string{"j/k move", "g/G top/bottom", "/ search", "n/N match", "f filters", "t window", "r refresh", "q quit"}
 	return "keys: " + strings.Join(hints, "  ")
 }
 

@@ -10,7 +10,9 @@ import (
 // Every predicate is AND; the values inside one predicate are OR. An event with
 // no timestamp never passes a bounded window: the window cannot place it
 // (PRD 8.2). The keyword only ever reads the message, never raw fields.
-func match(f Filter, e event.Event) bool {
+// Match is the one predicate behind both surfaces: the CLI filter flags and the
+// TUI search must agree on what a keyword means, so neither reimplements it.
+func Match(f Filter, e event.Event) bool {
 	if !f.Since.IsZero() && (e.TimestampUnixUS == 0 || e.TimestampUnixUS < f.Since.UnixMicro()) {
 		return false
 	}

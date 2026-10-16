@@ -90,32 +90,61 @@ func (m Model) selectedEvent() (event.Event, bool) {
 // rowText is the plain form of a row: tests and truncation work on it, so a
 // cut never lands inside an escape sequence.
 func (m Model) rowText(ev event.Event) string {
+	c := rowCellsOf(ev)
+	return fmt.Sprintf(rowFormat, c.stamp, pad(c.severity, severityWidth), pad(c.category, categoryWidth), c.unit, c.message)
+}
+
+// rowStyled colours the severity cell and the search match. A selected row is
+// wrapped as a whole instead, because nesting an attribute around an inner
+// colour reset would drop the cursor highlight.
+func (m Model) rowStyled(ev event.Event, selected bool) string {
+	if m.styles == nil {
+		return m.rowText(ev)
+	}
+	if selected {
+		return m.styles.selected.Render(m.rowText(ev))
+	}
+	c := rowCellsOf(ev)
+	severity := pad(c.severity, severityWidth)
+	if st, ok := m.styles.severityStyle(ev.Severity); ok {
+		severity = st.Render(severity)
+	}
+	message := c.message
+	if m.search != "" {
+		message = m.styles.highlightMatches(message, m.search)
+	}
+	return fmt.Sprintf(rowFormat, c.stamp, severity, pad(c.category, categoryWidth), c.unit, message)
+}
+
+type rowCells struct {
+	stamp    string
+	severity string
+	category string
+	unit     string
+	message  string
+}
+
+const rowFormat = "%s  %s  %s  %s  %s"
+
+func rowCellsOf(ev event.Event) rowCells {
 	unit := "-"
 	if ev.Service.Unit != nil && *ev.Service.Unit != "" {
 		unit = *ev.Service.Unit
 	}
-	return fmt.Sprintf("%s  %-*s  %-*s  %s  %s",
-		rowStamp(ev),
-		severityWidth, dashIfEmpty(string(ev.Severity)),
-		categoryWidth, dashIfEmpty(string(ev.Category)),
-		unit,
-		oneLine(ev.Message),
-	)
+	return rowCells{
+		stamp:    rowStamp(ev),
+		severity: dashIfEmpty(string(ev.Severity)),
+		category: dashIfEmpty(string(ev.Category)),
+		unit:     unit,
+		message:  oneLine(ev.Message),
+	}
 }
 
-func (m Model) rowStyled(ev event.Event, selected bool) string {
-	plain := m.rowText(ev)
-	if m.styles == nil {
-		return plain
+func pad(s string, width int) string {
+	if len(s) >= width {
+		return s
 	}
-	if selected {
-		return m.styles.selected.Render(plain)
-	}
-	st, ok := m.styles.severityStyle(ev.Severity)
-	if !ok {
-		return plain
-	}
-	return st.Render(plain)
+	return s + strings.Repeat(" ", width-len(s))
 }
 
 func rowStamp(ev event.Event) string {

@@ -56,6 +56,8 @@ type Model struct {
 
 	input *filterState
 
+	search string
+
 	styles *styles
 
 	width  int
@@ -94,6 +96,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.input.mode {
 		case modeWindow:
 			return m.handleWindowKey(msg)
+		case modeFilter:
+			return m.handleFilterKey(msg)
+		case modeKeyword:
+			return m.handleKeywordKey(msg)
 		}
 	}
 	switch msg.String() {
@@ -107,6 +113,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveSelection(-len(m.events))
 	case "G":
 		m.moveSelection(len(m.events))
+	case "n":
+		m.jumpMatch(1)
+	case "N":
+		m.jumpMatch(-1)
+	case "/":
+		return m.openKeywordInput(), nil
+	case "f":
+		return m.openFilterMenu(), nil
 	case "t":
 		return m.openWindowPicker(), nil
 	case "r":

@@ -107,7 +107,7 @@ func Run(ctx context.Context, srcs []source.Source, f Filter, limit int, after s
 			addStreamError(&res, head.name, err, "source_failed_midstream:")
 		}
 
-		if !match(f, ev) {
+		if !Match(f, ev) {
 			continue
 		}
 		if afterEvent != nil && !orderLess(*afterEvent, ev) {
