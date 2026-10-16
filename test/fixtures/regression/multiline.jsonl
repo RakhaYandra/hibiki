@@ -1,0 +1,2 @@
+{"MESSAGE":"Traceback (most recent call last):\n  File \"/usr/bin/tool\", line 4, in <module>\n    raise SystemExit(2)\nSystemExit: 2","PRIORITY":"6","_BOOT_ID":"30107f27d01e4e42b24846e4da81db1a","_COMM":"python3","_HOSTNAME":"legion5","_PID":"2401","_TRANSPORT":"stdout","__CURSOR":"s=ml;i=1","__REALTIME_TIMESTAMP":"1792142671274265"}
+{"MESSAGE":"one line after the multiline record","PRIORITY":"4","_BOOT_ID":"30107f27d01e4e42b24846e4da81db1a","_HOSTNAME":"legion5","_TRANSPORT":"stdout","__CURSOR":"s=ml;i=2","__REALTIME_TIMESTAMP":"1792142672274265"}
