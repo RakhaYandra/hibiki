@@ -14,15 +14,22 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newVersionCmd())
+	root.AddCommand(
+		newTimelineCmd(),
+		newEventsCmd(),
+		newVersionCmd(),
+	)
 	return root
 }
 
 func Execute() int {
-	root := NewRootCmd()
+	return run(NewRootCmd())
+}
+
+func run(root *cobra.Command) int {
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(root.ErrOrStderr(), "hibiki:", err)
 		return exit.FromError(err)
 	}
-	return 0
+	return exit.CodeOK
 }
