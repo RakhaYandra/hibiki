@@ -1,0 +1,19 @@
+version: "2"
+linters:
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - misspell
+    - unconvert
+  settings:
+    errcheck:
+      # Stdout writes in CLI renderers: failure surfaces via SIGPIPE/exit
+      # code, and cobra itself ignores these. Real errors use return values.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+formatters:
+  enable:
+    - gofmt
