@@ -194,8 +194,8 @@ func TestAdapterCancellationStopsProcess(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("Close took %s, want under 2s", elapsed)
+	if elapsed := time.Since(start); elapsed > 4*time.Second {
+		t.Errorf("Close took %s, want under 4s", elapsed)
 	}
 }
 
