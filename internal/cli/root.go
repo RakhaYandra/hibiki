@@ -17,6 +17,16 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.Args = noArgs
+	// The root command is runnable only so ValidateArgs runs: without it cobra
+	// stops at ErrHelp for a non-runnable root and an unknown subcommand would
+	// exit 0 behind a help screen.
+	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	}
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return exit.Usage("%s", err)
+	})
 	root.AddCommand(
 		newTimelineCmd(),
 		newEventsCmd(),
@@ -39,6 +49,24 @@ func run(root *cobra.Command) int {
 		return commandCode(err)
 	}
 	return exit.CodeOK
+}
+
+// noArgs and exactArgs mirror cobra's own validators, messages included, so a
+// bad argument leaves as exit 2 (PRD 9.7) instead of the untyped error code 1.
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return exit.Usage("unknown command %q for %q", args[0], cmd.CommandPath())
+	}
+	return nil
+}
+
+func exactArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return exit.Usage("accepts %d arg(s), received %d", n, len(args))
+		}
+		return nil
+	}
 }
 
 // The one place an error becomes an exit code. The TUI owns two codes the rest

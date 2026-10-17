@@ -33,7 +33,7 @@ func newInspectCmd() *cobra.Command {
 			"it came from, and what happened shortly before and after it.\n\n" +
 			"The event comes from the last timeline or events query, or from a file\n" +
 			"written with --save. Surrounding events come from the live journal.",
-		Args: cobra.ExactArgs(1),
+		Args: exactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runInspect(c, args[0], contextWindow, file, format)
 		},

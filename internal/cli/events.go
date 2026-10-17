@@ -9,7 +9,7 @@ func newEventsCmd() *cobra.Command {
 		Long: "List system events with the same filters as timeline.\n\n" +
 			"--category is the official flag; --type is an accepted alias and both\n" +
 			"must agree when they are given together.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 	}
 	flags := addFilterFlags(cmd)
 	cmd.RunE = func(c *cobra.Command, _ []string) error {

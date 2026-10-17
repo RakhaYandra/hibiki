@@ -21,7 +21,7 @@ func newSourcesCmd() *cobra.Command {
 		Short: "List event sources and what each one can answer",
 		Long: "List every source Hibiki can read, whether it is reachable here, and how\n" +
 			"far back it reaches. A source that cannot reconstruct history says so.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 	}
 	check := cmd.Flags().Bool("check", false, "exit 3 when a source that queries cannot be read here")
 	cmd.RunE = func(c *cobra.Command, _ []string) error {

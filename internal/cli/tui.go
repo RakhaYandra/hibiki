@@ -21,7 +21,7 @@ func newTuiCmd() *cobra.Command {
 			"events, filter them, and inspect a single event with the journal fields\n" +
 			"it came from.\n\n" +
 			"Reading is all it does: no command writes to the journal.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 	}
 	flags := addFilterFlags(cmd)
 	cmd.RunE = func(c *cobra.Command, _ []string) error {

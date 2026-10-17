@@ -33,7 +33,7 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Check what Hibiki can read on this machine",
 		Long: "Run six read only checks and report what works, what does not, and what\n" +
 			"the user can do about it. Hibiki never changes the machine itself.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if format != "text" && format != "json" {
 				return exit.Usage("--format must be text or json, got %q", format)
