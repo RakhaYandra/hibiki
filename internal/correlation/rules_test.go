@@ -23,6 +23,11 @@ func TestIncidentID(t *testing.T) {
 	if got == "inc_77f356e7feb7" {
 		t.Errorf("a smaller related set must produce a different id")
 	}
+
+	reversed := incidentID("restart-loop", restart[0], []event.Event{restart[2], restart[1]})
+	if reversed != "inc_195c260735d6" {
+		t.Errorf("incidentID with reversed related order = %q, want %q", reversed, "inc_195c260735d6")
+	}
 }
 
 func TestRun_RestartMessageIDCriterion(t *testing.T) {
@@ -81,6 +86,17 @@ func TestRun_BootGuard(t *testing.T) {
 	t.Run("nil and non-nil boot ids never group together", func(t *testing.T) {
 		events := restartEvents()
 		events[0] = withBoot(events[0], "boot-a")
+		if got := Run(events, Options{}); len(got) != 0 {
+			t.Errorf("Run() returned %d incidents, want 0", len(got))
+		}
+	})
+
+	t.Run("nil boot id never joins an empty string boot id", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("e1", baseUS, event.CategoryService, event.SeverityError, "nginx.service"),
+			withBoot(testEvent("e2", baseUS+5_000_000, event.CategoryService, event.SeverityError, "nginx.service"), ""),
+			withBoot(testEvent("e3", baseUS+45_000_000, event.CategoryService, event.SeverityError, "nginx.service"), ""),
+		}
 		if got := Run(events, Options{}); len(got) != 0 {
 			t.Errorf("Run() returned %d incidents, want 0", len(got))
 		}

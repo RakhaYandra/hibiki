@@ -107,6 +107,26 @@ func TestRun_RestartLoop(t *testing.T) {
 		}
 	})
 
+	t.Run("span exactly equal to the window still matches", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("e1", baseUS, event.CategoryService, event.SeverityError, "nginx.service"),
+			testEvent("e2", baseUS+2_000_000, event.CategoryService, event.SeverityInfo, "nginx.service"),
+			testEvent("e3", baseUS+4_000_000, event.CategoryService, event.SeverityInfo, "nginx.service"),
+		}
+		events[1].Raw["MESSAGE_ID"] = restartMessageID
+		events[2].Raw["MESSAGE_ID"] = restartMessageID
+		got := Run(events, Options{Window: 4 * time.Second})
+		if len(got) != 1 {
+			t.Fatalf("Run() returned %d incidents, want 1", len(got))
+		}
+		if got[0].Rule != "restart-loop" {
+			t.Errorf("Rule = %q, want %q", got[0].Rule, "restart-loop")
+		}
+		if len(got[0].Related) != 2 {
+			t.Errorf("len(Related) = %d, want 2", len(got[0].Related))
+		}
+	})
+
 	t.Run("one second override rejects events two seconds apart", func(t *testing.T) {
 		events := []event.Event{
 			testEvent("e1", baseUS, event.CategoryService, event.SeverityError, "nginx.service"),
@@ -259,6 +279,28 @@ func TestRun_DeterministicAndPure(t *testing.T) {
 			t.Errorf("incident %d = (%s, %s), want (%s, %s)",
 				i, gotOrdered[i].Rule, gotOrdered[i].Primary.ID, wantRules[i], wantPrimaries[i])
 		}
+	}
+}
+
+func TestRun_EqualTimestampsBreakByID(t *testing.T) {
+	events := []event.Event{
+		testEvent("bb", baseUS, event.CategoryService, event.SeverityInfo, "nginx.service"),
+		testEvent("cc", baseUS, event.CategoryService, event.SeverityInfo, "nginx.service"),
+		testEvent("aa", baseUS, event.CategoryService, event.SeverityInfo, "nginx.service"),
+	}
+	for i := range events {
+		events[i].Raw["MESSAGE_ID"] = restartMessageID
+	}
+	got := Run(events, Options{})
+	if len(got) != 1 {
+		t.Fatalf("Run() returned %d incidents, want 1", len(got))
+	}
+	inc := got[0]
+	if inc.Primary.ID != "aa" {
+		t.Errorf("Primary.ID = %q, want %q", inc.Primary.ID, "aa")
+	}
+	if len(inc.Related) != 2 || inc.Related[0].ID != "bb" || inc.Related[1].ID != "cc" {
+		t.Errorf("Related ids are not [bb, cc] in order: %+v", inc.Related)
 	}
 }
 

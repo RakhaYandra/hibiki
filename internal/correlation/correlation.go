@@ -129,6 +129,7 @@ func incidentID(rule string, primary event.Event, related []event.Event) string 
 	for _, rel := range related {
 		ids = append(ids, rel.ID)
 	}
+	sort.Strings(ids)
 	sum := sha256.Sum256([]byte(rule + ":" + primary.ID + ":" + strings.Join(ids, ",")))
 	return "inc_" + hex.EncodeToString(sum[:])[:12]
 }
