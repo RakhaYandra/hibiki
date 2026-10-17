@@ -32,6 +32,9 @@ command -v journalctl
 hibiki doctor
 ```
 
+`hibiki sources --check` is the scripted form of this check: it prints the full
+source report first, then exits 3 when a source that queries cannot be read.
+
 ## `unit not found: <unit>` on stderr, exit 0
 
 The unit name you passed does not exist now, in the system scope or in your user

@@ -6,32 +6,37 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/RakhaYandra/hibiki/internal/event"
+	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/spf13/cobra"
 )
 
 func newSourcesCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "sources",
 		Short: "List event sources and what each one can answer",
 		Long: "List every source Hibiki can read, whether it is reachable here, and how\n" +
 			"far back it reaches. A source that cannot reconstruct history says so.",
 		Args: cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			ctx := c.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			return runSources(ctx, c.OutOrStdout())
-		},
 	}
+	check := cmd.Flags().Bool("check", false, "exit 3 when a source that queries cannot be read here")
+	cmd.RunE = func(c *cobra.Command, _ []string) error {
+		ctx := c.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return runSources(ctx, c.OutOrStdout(), *check)
+	}
+	return cmd
 }
 
-func runSources(ctx context.Context, w io.Writer) error {
+func runSources(ctx context.Context, w io.Writer, check bool) error {
 	out := bufio.NewWriter(w)
+	var problems []string
 	for _, src := range newSources() {
 		status := src.Available(ctx)
 		state := "available"
@@ -42,6 +47,9 @@ func runSources(ctx context.Context, w io.Writer) error {
 		fmt.Fprintf(out, "  %-9s %s\n", "status", state)
 		fmt.Fprintf(out, "  %-9s %s\n", "detail", status.Detail)
 		if !status.Available {
+			if check {
+				problems = append(problems, fmt.Sprintf("%s unavailable: %s", status.Name, status.Detail))
+			}
 			continue
 		}
 		oldest, newest, err := coverage(ctx, src)
@@ -60,7 +68,13 @@ func runSources(ctx context.Context, w io.Writer) error {
 	fmt.Fprintln(out, "process")
 	fmt.Fprintln(out, "  status    not available in v0.1.0")
 	fmt.Fprintln(out, "  detail    process history cannot be reconstructed from the journal; a process is only observable while it runs (PRD 6.1)")
-	return out.Flush()
+	if err := out.Flush(); err != nil {
+		return err
+	}
+	if len(problems) > 0 {
+		return exit.SourceUnavailable("%s", strings.Join(problems, "; "))
+	}
+	return nil
 }
 
 // The oldest record needs a plain query and the newest needs journalctl's own

@@ -481,3 +481,15 @@ func waitForOutput(t *testing.T, path, marker string, timeout time.Duration) {
 	}
 	t.Fatalf("%s never showed %q within %s", path, marker, timeout)
 }
+
+func TestCLISourcesCheckExitsZeroOnAReadableJournal(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}), "sources", "--check")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr = %s)", res.code, res.stderr)
+	}
+	for _, want := range []string{"journal", "process", "available"} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("the report must still list every source; stdout lost %q:\n%s", want, res.stdout)
+		}
+	}
+}

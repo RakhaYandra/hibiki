@@ -156,6 +156,11 @@ process
   detail    process history cannot be reconstructed from the journal; a process is only observable while it runs
 ```
 
+The same report doubles as a probe: `hibiki sources --check` prints everything
+above and exits 3 when a source that queries cannot be read here, so a script or
+CI job can call it without parsing the output. The `process` section is
+informational and never fails the check.
+
 ### doctor
 
 ```bash
