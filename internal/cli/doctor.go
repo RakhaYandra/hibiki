@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -23,6 +24,7 @@ var newDoctorDeps = func(cmd *cobra.Command) diagnostics.Deps {
 		Systemctl:  func(ctx context.Context) (string, error) { return toolVersion(ctx, "systemctl") },
 		ReadProbe:  readOneRecord,
 		IsTTY:      isTTY(cmd.OutOrStdout()),
+		Term:       os.Getenv("TERM"),
 	}
 }
 

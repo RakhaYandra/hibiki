@@ -29,6 +29,7 @@ type Deps struct {
 	Systemctl  func(ctx context.Context) (string, error)
 	ReadProbe  func(ctx context.Context) (map[string]string, error)
 	IsTTY      bool
+	Term       string
 }
 
 // Six fixed checks, in a fixed order, so a report is comparable between runs
@@ -61,9 +62,22 @@ func Run(ctx context.Context, deps Deps) []Check {
 		})
 	}
 
-	if deps.IsTTY {
-		checks = append(checks, Check{Name: CheckTUIReady, OK: true, Detail: "stdout is a terminal"})
-	} else {
+	// The same CheckTerminal the TUI uses, so the report and the refusal to
+	// start can never disagree about what a usable terminal is.
+	switch err := CheckTerminal(deps.Term, deps.IsTTY); {
+	case err == nil:
+		detail := "stdout is a terminal"
+		if deps.Term != "" {
+			detail += "; TERM=" + deps.Term
+		}
+		checks = append(checks, Check{Name: CheckTUIReady, OK: true, Detail: detail})
+	case deps.IsTTY:
+		checks = append(checks, Check{
+			Name:   CheckTUIReady,
+			Detail: "TERM=" + deps.Term + " cannot address the cursor",
+			Fix:    "use a terminal that supports cursor addressing, or stay with the timeline and events commands",
+		})
+	default:
 		checks = append(checks, Check{
 			Name:   CheckTUIReady,
 			Detail: "stdout is not a terminal, so colored output stays off",

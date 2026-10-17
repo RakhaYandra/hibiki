@@ -83,3 +83,24 @@ func TestDoctorRejectsBadFormat(t *testing.T) {
 		t.Fatalf("exit = %d, want 2 (stderr = %s)", res.code, res.stderr)
 	}
 }
+
+func TestDoctorTUIReadyAppearsInTheJSONReport(t *testing.T) {
+	res := runCLI(t, cliDeps{doctorDeps: healthyDoctor}, "doctor", "--format", "json")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	var payload struct {
+		Checks []struct {
+			Name string `json:"name"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &payload); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, res.stdout)
+	}
+	for _, c := range payload.Checks {
+		if c.Name == diagnostics.CheckTUIReady {
+			return
+		}
+	}
+	t.Fatalf("no %s check in the JSON contract:\n%s", diagnostics.CheckTUIReady, res.stdout)
+}

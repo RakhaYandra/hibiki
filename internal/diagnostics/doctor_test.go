@@ -147,3 +147,30 @@ func TestDoctorNeverSuggestsChangingAnythingByItself(t *testing.T) {
 		}
 	}
 }
+
+func TestTUIReadyNamesADumbTerminal(t *testing.T) {
+	deps := allGoodDeps()
+	deps.Term = "dumb"
+	check := checkNamed(t, Run(context.Background(), deps), CheckTUIReady)
+	if check.OK {
+		t.Fatalf("check = %+v, want a dumb terminal refused", check)
+	}
+	if !strings.Contains(check.Detail, "dumb") {
+		t.Errorf("detail = %q, want it to name TERM", check.Detail)
+	}
+	if !strings.Contains(check.Fix, "cursor addressing") || !strings.Contains(check.Fix, "timeline") {
+		t.Errorf("fix = %q, want a terminal with cursor addressing or the CLI commands", check.Fix)
+	}
+}
+
+func TestTUIReadyAcceptsAPlainTerminal(t *testing.T) {
+	deps := allGoodDeps()
+	deps.Term = "xterm-256color"
+	check := checkNamed(t, Run(context.Background(), deps), CheckTUIReady)
+	if !check.OK {
+		t.Fatalf("check = %+v, want OK on a plain terminal", check)
+	}
+	if !strings.Contains(check.Detail, "xterm-256color") {
+		t.Errorf("detail = %q, want it to name the terminal", check.Detail)
+	}
+}
