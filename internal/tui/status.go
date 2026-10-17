@@ -133,8 +133,16 @@ func (m Model) footerView() string {
 		if m.search != "" && !m.anyMatch() {
 			parts = append(parts, noMatchNote)
 		}
-		if m.truncated && m.cursorNext != "" {
+		if m.loadingMore {
+			parts = append(parts, "loading more")
+		} else if m.truncated && m.cursorNext != "" {
 			parts = append(parts, moreEventsNote)
+		}
+		if m.duplicates > 0 {
+			parts = append(parts, fmt.Sprintf("%d duplicate rows skipped", m.duplicates))
+		}
+		if m.pageWarning != "" {
+			parts = append(parts, m.pageWarning)
 		}
 		if m.saveWarning != "" {
 			parts = append(parts, "snapshot warning: "+m.saveWarning)

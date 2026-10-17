@@ -56,8 +56,11 @@ type Model struct {
 	cancel      context.CancelFunc
 	queryToken  int
 	loading     bool
+	loadingMore bool
 	err         error
 	saveWarning string
+	pageWarning string
+	duplicates  int
 
 	filter       timeline.Filter
 	limit        int
@@ -133,6 +136,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "j", "down":
+		if m.atBottom() {
+			return m, m.maybeLoadMore()
+		}
 		m.moveSelection(1)
 	case "k", "up":
 		m.moveSelection(-1)
@@ -181,6 +187,10 @@ func (m Model) View() string {
 		frame[i] = truncate(line, m.width)
 	}
 	return strings.Join(frame, "\n")
+}
+
+func (m Model) atBottom() bool {
+	return len(m.events) > 0 && m.selected >= len(m.events)-1
 }
 
 func (m Model) rows() int {
