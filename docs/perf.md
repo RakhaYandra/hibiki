@@ -14,6 +14,7 @@ extrapolated.
 | 30 minute query     | P95 under 2 s on a fixture machine    | 34 ms for 200 events (default limit)      |
 | Memory, 10k events  | under 100 MB                          | 82 MB peak RSS, `--format json`           |
 | Cancellation        | the process stops after cancellation  | under 2 s after SIGINT, covered by tests  |
+| TUI navigation      | input response under 100 ms, loaded   | 36 us per frame at 10,000 events, p95 asserted |
 | Pagination          | the whole journal is never loaded     | see the cursor section below              |
 
 The memory figure is the peak RSS of the `hibiki` process, taken from
@@ -44,6 +45,27 @@ machine returning the 30 minute window in 168 ms for 4135 records. Decoding and
 normalizing those 4135 records here costs about 28 ms, so Hibiki's own work is
 roughly a sixth of the time journalctl spends reading, and the external read
 dominates the wall clock exactly as expected.
+
+## TUI navigation
+
+```bash
+go test ./internal/tui/ -run TestNavigationStaysUnderTheBudget -v
+go test ./internal/tui/ -bench 'BenchmarkView|BenchmarkUpdateNavigation' -benchmem -count=3
+```
+
+| Benchmark                             | ns/op   | B/op  | allocs/op |
+| ------------------------------------- | ------- | ----- | --------- |
+| `BenchmarkViewWith10kEvents`          | 36,363  | 22,840 | 562      |
+| `BenchmarkUpdateNavigationWith10kEvents` | 37,766 | 24,321 | 568    |
+
+`TestNavigationStaysUnderTheBudget` loads 10,000 events into the model and
+renders 200 frames at 120x40 for two inputs: moving down, and `n` pressed while
+the search term matches nothing, which is the worst case for `n` because every
+press scans the whole list. The 95th percentile of those frame durations must
+stay under 100 ms (PRD 14), and it does: one frame costs about 36 us, more than
+three orders of magnitude below the budget. Frame cost stays flat as the list
+grows because only the visible window is rendered: `listRows` walks from
+`offset` to `offset + rows`, never all 10,000 events.
 
 ## Where the memory went
 
