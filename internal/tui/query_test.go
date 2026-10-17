@@ -79,7 +79,7 @@ func TestQuitCancelsTheRunningQuery(t *testing.T) {
 
 	cmd := m.startQuery(timeline.Filter{}, 200, "")
 	go cmd()
-	m.cancel()
+	m.cancelInFlight()
 
 	select {
 	case <-fake.Cancelled:
@@ -318,5 +318,24 @@ func TestPagingNeverRepeatsAnEventEvenIfTheSourceDoes(t *testing.T) {
 	}
 	if !strings.Contains(got.footerView(), "duplicate") {
 		t.Errorf("footer = %q, want the skipped row reported", got.footerView())
+	}
+}
+
+func TestTheInitialQueryRunsAtStartup(t *testing.T) {
+	fake := newFakeSource(manyFakeEvents(3)...)
+	m := New(Deps{Sources: []source.Source{fake}, PageSize: 50}, Options{Limit: 200})
+
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("cmd = nil, want the first query to start with the program")
+	}
+
+	updated, _ := m.Update(cmd())
+	final, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("model = %T, want tui.Model", updated)
+	}
+	if len(final.events) != 3 {
+		t.Fatalf("events = %d, want the startup query to fill the list without a keypress", len(final.events))
 	}
 }

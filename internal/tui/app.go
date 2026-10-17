@@ -53,10 +53,11 @@ type Model struct {
 	deps Deps
 
 	ctx         context.Context
-	cancel      context.CancelFunc
+	run         *queryRun
 	queryToken  int
 	loading     bool
 	loadingMore bool
+	interrupted bool
 	err         error
 	saveWarning string
 	pageWarning string
@@ -79,6 +80,7 @@ type Model struct {
 	detail       *detailState
 	detailToken  int
 	detailCancel context.CancelFunc
+	detailDone   chan struct{}
 
 	search string
 
@@ -88,12 +90,22 @@ type Model struct {
 	height int
 }
 
+// queryRun is shared by pointer between the model and every command built from
+// a copy of it, so a query started by Init can still be stopped and waited for.
+type queryRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 func New(deps Deps, opts Options) Model {
 	return Model{
-		deps:   deps,
-		ctx:    context.Background(),
-		filter: opts.Filter,
-		limit:  opts.Limit,
+		deps:       deps,
+		ctx:        context.Background(),
+		run:        &queryRun{},
+		filter:     opts.Filter,
+		limit:      opts.Limit,
+		queryToken: 1,
+		loading:    true,
 	}
 }
 
@@ -101,7 +113,33 @@ func (m *Model) isEmpty() bool {
 	return len(m.events) == 0 && m.err == nil && !m.loading
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+// cancelInFlight stops every query the model is waiting on, so leaving the TUI
+// never leaves a goroutine reading the journal.
+func (m *Model) cancelInFlight() {
+	if m.run != nil && m.run.cancel != nil {
+		m.run.cancel()
+		m.run.cancel = nil
+	}
+	if m.detailCancel != nil {
+		m.detailCancel()
+		m.detailCancel = nil
+	}
+}
+
+func (m Model) Init() tea.Cmd {
+	// Init gets a copy of the model, so the query it starts records its cancel
+	// function and completion in the shared queryRun, not on the copy.
+	filter, limit, token := m.filter, m.limit, m.queryToken
+	ctx, cancel := context.WithCancel(m.ctx)
+	finished := make(chan struct{})
+	m.run.cancel = cancel
+	m.run.done = finished
+	return func() tea.Msg {
+		defer close(finished)
+		res, err := timeline.Run(ctx, m.deps.Sources, filter, limit, "")
+		return queryDoneMsg{token: token, res: res, err: err}
+	}
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -133,7 +171,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q":
+		m.cancelInFlight()
+		return m, tea.Quit
+	case "ctrl+c":
+		m.cancelInFlight()
+		m.interrupted = true
 		return m, tea.Quit
 	case "j", "down":
 		if m.atBottom() {
@@ -281,15 +324,48 @@ func (m Model) splitBody() string {
 	return strings.Join(out, "\n")
 }
 
+// shutdownWait bounds how long a quitting session waits for the query in
+// flight to stop before reporting it as stuck.
+const shutdownWait = 2 * time.Second
+
 func Run(ctx context.Context, deps Deps, opts Options, in io.Reader, out io.Writer) error {
+	if ctx.Err() != nil {
+		return ErrInterrupted
+	}
 	if err := diagnostics.CheckTerminal(os.Getenv("TERM"), isCharDevice(out)); err != nil {
 		return err
 	}
 	model := New(deps, opts)
 	model.ctx = ctx
 	model.styles = newStyles(out)
-	program := tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithContext(ctx))
-	_, err := program.Run()
+	program := tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithContext(ctx), tea.WithAltScreen())
+	final, err := program.Run()
+	if m, ok := final.(Model); ok {
+		m.cancelInFlight()
+		if m.run != nil && m.run.done != nil {
+			select {
+			case <-m.run.done:
+			case <-time.After(shutdownWait):
+				return errors.New("the query in flight did not stop in time")
+			}
+		}
+		if m.detailDone != nil {
+			select {
+			case <-m.detailDone:
+			case <-time.After(shutdownWait):
+				return errors.New("the inspect in flight did not stop in time")
+			}
+		}
+		if m.interrupted {
+			return ErrInterrupted
+		}
+	}
+	if ctx.Err() != nil {
+		return ErrInterrupted
+	}
+	if errors.Is(err, tea.ErrInterrupted) {
+		return ErrInterrupted
+	}
 	return err
 }
 

@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/RakhaYandra/hibiki/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 func TestCommandCodeMapsRefusalToUsage(t *testing.T) {
@@ -47,5 +50,25 @@ func TestTuiCommandRefusesAPipedStdout(t *testing.T) {
 	}
 	if !strings.Contains(res.stderr, "requires a terminal") {
 		t.Errorf("stderr = %q, want the reason to say what is missing", res.stderr)
+	}
+}
+
+func TestTuiCommandPrintsInterruptAndExits130(t *testing.T) {
+	root := &cobra.Command{Use: "hibiki", SilenceUsage: true, SilenceErrors: true}
+	root.AddCommand(&cobra.Command{
+		Use:  "tui",
+		Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error { return tui.ErrInterrupted },
+	})
+	var stderr bytes.Buffer
+	root.SetOut(io.Discard)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"tui"})
+
+	if code := run(root); code != interruptedCode {
+		t.Fatalf("code = %d, want %d", code, interruptedCode)
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "hibiki: interrupted" {
+		t.Fatalf("message = %q, want %q", got, "hibiki: interrupted")
 	}
 }

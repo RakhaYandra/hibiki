@@ -388,3 +388,96 @@ func contains(values []string, want string) bool {
 	}
 	return false
 }
+
+func TestTuiSIGINTRestoresTheTerminalAndExits130(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script(1) is not on PATH")
+	}
+
+	out, in, done := startTuiSession(t)
+	waitForOutput(t, out.Name(), "HIBIKI", 15*time.Second)
+	if _, err := in.Write([]byte{3}); err != nil {
+		t.Fatal(err)
+	}
+
+	captured, code := finishTuiSession(t, out, in, done)
+	if code != 130 {
+		t.Fatalf("exit = %d, want 130 (output: %q)", code, captured)
+	}
+	if !strings.Contains(captured, "\x1b[?1049l") {
+		t.Errorf("output = %q, want the alternate screen released so the shell is usable", captured)
+	}
+}
+
+func TestTuiQuitKeyExitsZeroUnderAPty(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script(1) is not on PATH")
+	}
+
+	out, in, done := startTuiSession(t)
+	waitForOutput(t, out.Name(), "HIBIKI", 15*time.Second)
+	if _, err := in.Write([]byte{'q'}); err != nil {
+		t.Fatal(err)
+	}
+
+	captured, code := finishTuiSession(t, out, in, done)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 for a plain quit (output: %q)", code, captured)
+	}
+}
+
+func startTuiSession(t *testing.T) (*os.File, *os.File, *exec.Cmd) {
+	t.Helper()
+	out, err := os.Create(filepath.Join(t.TempDir(), "tui.out"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { out.Close() })
+	in, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { in.Close() })
+
+	session := fmt.Sprintf("%s tui --since %s --until %s", binPath, windowSince, windowUntil)
+	cmd := exec.Command("script", "-qec", session, os.DevNull)
+	cmd.Dir = repoRoot
+	cmd.Env = envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")})
+	cmd.Stdin = in
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return out, writer, cmd
+}
+
+func finishTuiSession(t *testing.T, out, in *os.File, cmd *exec.Cmd) (string, int) {
+	t.Helper()
+	err := cmd.Wait()
+	_ = in.Close()
+	captured, readErr := os.ReadFile(out.Name())
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return string(captured), exitErr.ExitCode()
+	}
+	if err != nil {
+		t.Fatalf("err = %v, want a reported exit status (output: %q)", err, captured)
+	}
+	return string(captured), 0
+}
+
+func waitForOutput(t *testing.T, path, marker string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), marker) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%s never showed %q within %s", path, marker, timeout)
+}

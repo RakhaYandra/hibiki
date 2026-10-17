@@ -40,11 +40,14 @@ func (m *Model) openDetail() tea.Cmd {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.detailCancel = cancel
+	finished := make(chan struct{})
+	m.detailDone = finished
 	m.detail = &detailState{ev: ev, loading: true, token: token}
 
 	srcs := m.deps.Sources
 	window := m.deps.DetailWindow
 	return func() tea.Msg {
+		defer close(finished)
 		out, err := inspect.ForEvent(ctx, srcs, ev, window)
 		return detailDoneMsg{token: token, ctx: out, err: err}
 	}
@@ -106,7 +109,12 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		m.detail.offset = 0
 		m.clampDetail()
-	case "q", "ctrl+c":
+	case "q":
+		m.cancelInFlight()
+		return m, tea.Quit
+	case "ctrl+c":
+		m.cancelInFlight()
+		m.interrupted = true
 		return m, tea.Quit
 	}
 	return m, nil

@@ -40,11 +40,13 @@ func (m *Model) maybeLoadMore() tea.Cmd {
 func (m *Model) startQueryInto(f timeline.Filter, limit int, after string, page bool) tea.Cmd {
 	m.queryToken++
 	token := m.queryToken
-	if m.cancel != nil {
-		m.cancel()
+	if m.run.cancel != nil {
+		m.run.cancel()
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	m.cancel = cancel
+	finished := make(chan struct{})
+	m.run.cancel = cancel
+	m.run.done = finished
 	if !page {
 		m.filter = f
 		m.limit = limit
@@ -54,6 +56,7 @@ func (m *Model) startQueryInto(f timeline.Filter, limit int, after string, page 
 	m.err = nil
 	m.pageWarning = ""
 	return func() tea.Msg {
+		defer close(finished)
 		res, err := timeline.Run(ctx, m.deps.Sources, f, limit, after)
 		return queryDoneMsg{token: token, res: res, err: err, page: page}
 	}

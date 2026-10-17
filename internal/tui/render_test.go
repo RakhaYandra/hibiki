@@ -71,6 +71,7 @@ func renderModel(width, height int, evs []event.Event) Model {
 		DetailWindow: 2 * time.Minute,
 	}, Options{Filter: timeline.Filter{Since: now.Add(-30 * time.Minute)}, Limit: 200})
 	m.width, m.height = width, height
+	m.loading = false
 	m.events = evs
 	m.sources = []source.Status{{Name: "journal", Available: true, Detail: "readable"}}
 	if len(evs) > 0 {

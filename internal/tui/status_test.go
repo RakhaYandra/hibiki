@@ -97,6 +97,7 @@ func TestLoadingAndErrorReplaceTheFooter(t *testing.T) {
 	}
 
 	empty := New(Deps{}, Options{})
+	empty.loading = false
 	empty.sources = []source.Status{{Name: "journal", Available: true, Detail: "readable"}}
 	if !strings.Contains(empty.View(), emptyNote) {
 		t.Errorf("view = %q, want the empty window note", empty.View())

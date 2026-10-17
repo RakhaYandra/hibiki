@@ -163,7 +163,9 @@ func searchEvents() []event.Event {
 }
 
 func searchModel() Model {
-	return New(Deps{Sources: []source.Source{newFakeSource()}}, Options{Limit: 200})
+	m := New(Deps{Sources: []source.Source{newFakeSource()}}, Options{Limit: 200})
+	m.loading = false
+	return m
 }
 
 func TestKeywordSearchMarksMatchesWithoutFilteringTheList(t *testing.T) {
