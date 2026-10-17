@@ -137,6 +137,35 @@ rule table. A record with no `PRIORITY` is `unknown` rather than guessed, and a
 record that matches no rule is `unknown` too. The raw fields are still there: see
 `hibiki inspect <id>` for the verbatim record.
 
+## `hibiki: requires a terminal` (exit 2)
+
+`tui` draws on a real terminal and reads keys from it. Piped or redirected
+output has neither, and `TERM=dumb` describes a terminal that cannot address the
+cursor, so the TUI refuses instead of printing escape sequences into a file.
+
+```bash
+hibiki doctor            # the tui-ready check says the same thing
+hibiki timeline --since 30m   # the same data, without a screen
+```
+
+The CLI commands (`timeline`, `events`, `inspect`) answer everything the TUI
+shows. Nothing else is wrong with the machine.
+
+## `hibiki: interrupted` (exit 130)
+
+Ctrl+C in the TUI, or SIGINT while it runs, stops the query in flight, leaves
+the alternate screen, and exits 130 like any interrupted Unix command. The
+terminal is restored: the prompt is back at the shell and the scrollback is
+untouched.
+
+```bash
+echo $?
+hibiki tui --since 30m    # rerun when you want the screen back
+```
+
+Nothing was written to the journal, and the last completed query is still in
+the snapshot, so `hibiki inspect` keeps working across an interrupt.
+
 ## Exit codes
 
 | Code | Meaning                                    | Typical cause                          |
@@ -146,6 +175,7 @@ record that matches no rule is `unknown` too. The raw fields are still there: se
 | 2    | Invalid argument or configuration           | `--severity bogus`, `--pid 0`, bad `--since` |
 | 3    | An essential source is unavailable          | Permission denied, journalctl missing  |
 | 4    | Invalid data                                | Nothing in the file decoded, damaged snapshot |
+| 130  | Interrupted in the TUI                       | Ctrl+C or SIGINT, terminal restored            |
 
 ## Still stuck
 

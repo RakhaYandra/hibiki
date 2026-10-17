@@ -35,8 +35,30 @@ then runs two extra windowed queries to collect the events before and after.
 | `internal/output`           | Text and JSON renderers, the envelope type                                                   |
 | `internal/inspect`          | The window around one event: before, after, sources, limitations                             |
 | `internal/session`          | Saving and loading the last query as a restricted file                                       |
-| `internal/diagnostics`      | The six doctor checks                                                                        |
+| `internal/tui`              | The interactive timeline (bubbletea); the only package that imports Charm                    |
+| `internal/diagnostics`      | The six doctor checks and the shared terminal check                                          |
 | `internal/exit`             | The exit code table from PRD 9.7                                                             |
+
+## The TUI layer
+
+`internal/tui` is a client of the engine, not a second implementation of it: it
+builds a `timeline.Filter`, runs `timeline.Run` in a command goroutine, and
+renders the `timeline.Result` the same CLI commands would get. The dependency
+points one way.
+
+```
+internal/cli --> internal/tui --> internal/timeline
+                    |                  ^
+                    +-> internal/inspect
+```
+
+The rule this layout exists to protect: the core never imports Charm. Bubbletea,
+lipgloss, bubbles and x/ansi live only inside `internal/tui`, so a query on the
+command line and a query on the screen go through the same engine, and the rest
+of the program builds, tests and runs without a terminal. Quitting cancels the
+context of the query in flight and waits for it, a successful TUI query still
+writes the snapshot so `hibiki inspect` can pick up an event seen on screen, and
+every exit code (including 130 for an interrupt) is decided in `internal/cli`.
 
 ## One query, step by step
 
@@ -72,3 +94,5 @@ then runs two extra windowed queries to collect the events before and after.
   another; the correlation engine that will have to justify a claim is v0.3.0.
 - A failure to read one source degrades the answer instead of hiding it: the
   event list may still be useful, and the envelope says which source was missing.
+- The core never imports Charm: bubbletea and its companions stay inside
+  `internal/tui`, so the engine keeps working headless.

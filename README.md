@@ -36,6 +36,7 @@ hibiki
 ├── inspect     one event, its surroundings and its raw fields
 ├── sources     what can be read here, and how far back
 ├── doctor      six read-only checks and what to do about failures
+├── tui         the same timeline, interactive
 └── version
 ```
 
@@ -181,6 +182,60 @@ tui-ready      needs attention  stdout is not a terminal, so colored output stay
 `doctor` changes nothing. It prints the fix a human could apply and stops
 there. An unreadable journal is exit code 3.
 
+### tui
+
+```bash
+hibiki tui --since 30m
+```
+
+The timeline as one interactive screen: move through events, filter them, and
+inspect a single event with the fields it came from. Reading is all it does, and
+it runs in the alternate screen, so quitting restores the shell exactly as it
+was.
+
+```console
+HIBIKI / SYSTEM TIMELINE
+window 2026-10-16T08:00:00Z .. now
+journal ok
+> 08:00:00.000  error     service      sshd.service  Failed to start the unit
+  08:00:01.000  error     service      sshd.service  Failed to start the unit
+  08:00:02.000  error     service      sshd.service  Failed to start the unit
+  ...
+covered: 2026-10-16T08:00:00Z .. 2026-10-16T08:00:49Z
+keys: j/k move  g/G top/bottom  enter inspect  / search  n/N match  f filters...
+```
+
+Keys, the table from PRD 10.2 plus the aliases the TUI also answers:
+
+| Key                 | Action                                  |
+| ------------------- | --------------------------------------- |
+| `↑` / `↓` (`j` / `k`) | move through events                   |
+| `g` / `G`           | jump to the top / bottom                |
+| `Enter`             | open the detail pane                    |
+| `/`                 | search the loaded events                |
+| `f`                 | open the filter menu                    |
+| `t`                 | change the time window                  |
+| `r`                 | refresh                                 |
+| `n` / `N`           | next / previous event that matches      |
+| `Esc`               | close the detail pane or the menu       |
+| `q`                 | quit, exit 0                            |
+| `Ctrl+C`            | interrupt, exit 130                     |
+
+No core function needs the mouse.
+
+The layout follows the terminal. At 72 columns and above every row carries time,
+severity, category, unit and message; below 72 the category column drops, and in
+a narrow terminal the row keeps time, severity and the message, cut with an
+ellipsis instead of losing the message. The detail pane takes half the screen
+only when both panes still have room, and below that it takes the whole screen
+with `Esc` to go back.
+
+Outside a terminal there is no screen to draw on and no keys to read, so the
+TUI refuses with exit 2 and the reason on stderr; `TERM=dumb` is refused the
+same way. `hibiki doctor` reports the same decision as the `tui-ready` check,
+and everything the TUI shows is reachable from `timeline`, `events` and
+`inspect`.
+
 ## JSON output
 
 `--format json` writes one envelope to stdout and nothing else; warnings go to
@@ -215,6 +270,7 @@ hibiki doctor        # checks access and prints what a human could change
 | 2    | Invalid argument or configuration  |
 | 3    | An essential source is unavailable |
 | 4    | Invalid data                       |
+| 130  | Interrupted, `Ctrl+C` or SIGINT in the TUI |
 
 An empty result is exit 0. See [docs/troubleshooting.md](docs/troubleshooting.md)
 for symptoms, causes, and what to do.
@@ -231,7 +287,6 @@ for symptoms, causes, and what to do.
 - `--limit 0` holds the whole result in memory, which on a 24 hour window is
   hundreds of megabytes. `--limit 200` on a 30 minute window is tens of
   milliseconds. Numbers: [docs/perf.md](docs/perf.md).
-- TUI: not in v0.1.0. `doctor` reports whether the terminal is ready for it.
 
 ## Development
 
@@ -250,10 +305,9 @@ Layout and invariants: [docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
-- v0.2.0: interactive TUI (Phases 4 of the product plan).
 - v0.3.0: correlation engine with rule ids, evidence, and explicit confidence.
 - Later: more adapters, journal sizes above 2 GB, Debian and Fedora permission
   matrices.
 
-Status: v0.1.0. The journal adapter, event model, timeline engine, and CLI are
-in scope; the TUI and the correlation engine are not.
+Status: v0.2.0. The journal adapter, event model, timeline engine, CLI, and TUI
+are in scope; the correlation engine is not.
