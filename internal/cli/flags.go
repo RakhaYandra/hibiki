@@ -139,6 +139,20 @@ func (f *filterFlags) toFilter(now time.Time) (timeline.Filter, error) {
 }
 
 func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
+	res, now, err := fetchQuery(cmd, f)
+	if err != nil {
+		return res, err
+	}
+	if f.Format == "json" {
+		return res, output.RenderJSON(cmd.OutOrStdout(), res)
+	}
+	return res, output.RenderText(cmd.OutOrStdout(), res, output.TextOptions{Color: isTTY(cmd.OutOrStdout()), Now: now})
+}
+
+// fetchQuery is the whole query lifecycle up to the answer: filter, read,
+// snapshot, --save. A command that renders something else from the same events
+// (incidents) shares it, so both surfaces agree on when a query is unreadable.
+func fetchQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, time.Time, error) {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
@@ -147,19 +161,19 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 
 	filter, err := f.toFilter(now)
 	if err != nil {
-		return timeline.Result{}, err
+		return timeline.Result{}, now, err
 	}
 	warnUnknownUnits(ctx, cmd, filter.Units)
 
 	res, err := timeline.Run(ctx, newSources(), filter, f.Limit, f.Cursor)
 	if err != nil {
-		return timeline.Result{}, err
+		return timeline.Result{}, now, err
 	}
 	// Nothing readable and nothing observed means the query has no answer to
 	// give: the source error becomes the command's error, so the exit code
 	// says why instead of reporting a quiet empty result.
 	if err := unreadableSourceError(res); err != nil {
-		return res, err
+		return res, now, err
 	}
 
 	// A snapshot that cannot be written never fails the query: the answer the
@@ -169,13 +183,10 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 	}
 	if f.Save != "" {
 		if err := writeEnvelopeFile(f.Save, res); err != nil {
-			return res, err
+			return res, now, err
 		}
 	}
-	if f.Format == "json" {
-		return res, output.RenderJSON(cmd.OutOrStdout(), res)
-	}
-	return res, output.RenderText(cmd.OutOrStdout(), res, output.TextOptions{Color: isTTY(cmd.OutOrStdout()), Now: now})
+	return res, now, nil
 }
 
 // A unit the user names may be a system unit or a user unit, so both scopes are

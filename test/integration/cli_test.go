@@ -482,6 +482,99 @@ func waitForOutput(t *testing.T, path, marker string, timeout time.Duration) {
 	t.Fatalf("%s never showed %q within %s", path, marker, timeout)
 }
 
+func TestCLIIncidentsGroupsTheCrashLoopFixture(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}),
+		"incidents", "--since", windowSince, "--until", windowUntil, "--format", "json")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	var view struct {
+		SchemaVersion int `json:"schema_version"`
+		Incidents     []struct {
+			ID         string `json:"id"`
+			Rule       string `json:"rule"`
+			Confidence string `json:"confidence"`
+			Reason     string `json:"reason"`
+			Primary    struct {
+				ID string `json:"id"`
+			} `json:"primary"`
+			Related []struct {
+				ID string `json:"id"`
+			} `json:"related"`
+		} `json:"incidents"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &view); err != nil {
+		t.Fatalf("stdout is not a Hibiki incidents document: %v\n%s", err, res.stdout)
+	}
+	if view.SchemaVersion != event.SchemaVersion {
+		t.Errorf("schema_version = %d, want %d", view.SchemaVersion, event.SchemaVersion)
+	}
+	if len(view.Incidents) != 3 {
+		t.Fatalf("incidents = %d, want the three the crash-loop fixture fires:\n%s", len(view.Incidents), res.stdout)
+	}
+	rules := map[string]string{}
+	for _, inc := range view.Incidents {
+		rules[inc.Rule] = inc.Confidence
+		if inc.ID == "" || inc.Reason == "" || inc.Primary.ID == "" || len(inc.Related) == 0 {
+			t.Errorf("incident %+v lost its id, reason or evidence", inc)
+		}
+	}
+	for rule, confidence := range map[string]string{
+		"restart-loop":      "high",
+		"failed-then-error": "medium",
+		"pid-errors":        "low",
+	} {
+		if got := rules[rule]; got != confidence {
+			t.Errorf("rule %s = %q, want confidence %q", rule, got, confidence)
+		}
+	}
+	if _, ok := rules["dependency-error"]; ok {
+		t.Errorf("one unit is not its own dependency:\n%s", res.stdout)
+	}
+}
+
+func TestCLIIncidentsTextNamesEveryRule(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}),
+		"incidents", "--since", windowSince, "--until", windowUntil)
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	for _, want := range []string{"Incidents (3)", "restart-loop [high]", "failed-then-error [medium]", "pid-errors [low]", "reason ", "Sources"} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("incidents text lost %q:\n%s", want, res.stdout)
+		}
+	}
+}
+
+func TestCLIIncidentsWindowFlagCanSilenceEveryRule(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}),
+		"incidents", "--since", windowSince, "--until", windowUntil, "--window", "1ms")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "No incidents found.") {
+		t.Errorf("every span in the fixture is wider than 1ms:\n%s", res.stdout)
+	}
+}
+
+func TestCLIIncidentsUnreadableSourceFailsClearly(t *testing.T) {
+	missing, err := filepath.Abs(filepath.Join(repoRoot, "test", "fixtures", "regression", "missing-journal.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": missing}),
+		"incidents", "--since", windowSince, "--until", windowUntil)
+	if res.code != 3 {
+		t.Fatalf("exit = %d, want 3 (stdout = %s, stderr = %s)", res.code, res.stdout, res.stderr)
+	}
+	if strings.Contains(res.stdout, "No incidents found.") {
+		t.Errorf("an unreadable journal is not an answer:\n%s", res.stdout)
+	}
+	if !strings.Contains(res.stderr, "HIBIKI_JOURNAL_FILE") {
+		t.Errorf("stderr must name the unusable source: %q", res.stderr)
+	}
+}
+
 func TestCLISourcesCheckExitsZeroOnAReadableJournal(t *testing.T) {
 	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}), "sources", "--check")
 	if res.code != 0 {

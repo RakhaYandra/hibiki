@@ -45,7 +45,17 @@ type Envelope struct {
 // the last field, so the array is written one event at a time.
 func RenderJSON(w io.Writer, res timeline.Result) error {
 	env := NewEnvelope(res)
+	out, err := streamHead(w, env, "events")
+	if err != nil {
+		return err
+	}
+	return streamArray(out, env.Events)
+}
 
+// streamHead writes the envelope head and opens the one array that trails it,
+// so every document shares the field order of Envelope and none of them holds
+// the whole result in memory before the first byte reaches the writer.
+func streamHead(w io.Writer, env Envelope, key string) (*bufio.Writer, error) {
 	head, err := json.MarshalIndent(envelopeHead{
 		SchemaVersion: env.SchemaVersion,
 		GeneratedAt:   env.GeneratedAt,
@@ -57,25 +67,27 @@ func RenderJSON(w io.Writer, res timeline.Result) error {
 		Limitations:   env.Limitations,
 	}, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if n := len(head); n == 0 || head[n-1] != '}' {
-		return errors.New("cannot render the envelope head")
+		return nil, errors.New("cannot render the envelope head")
 	}
-	// Drop the closing brace and the newline before it, then the events array
-	// closes the object.
+	// Drop the closing brace and the newline before it, then the array closes
+	// the object.
 	head = bytes.TrimRight(head[:len(head)-1], "\n")
-	head = append(head, ',')
-
 	out := bufio.NewWriter(w)
 	if _, err := out.Write(head); err != nil {
-		return err
+		return nil, err
 	}
-	if _, err := out.WriteString("\n  \"events\": ["); err != nil {
-		return err
+	if _, err := out.WriteString(",\n  \"" + key + "\": ["); err != nil {
+		return nil, err
 	}
-	for i, e := range env.Events {
-		line, err := json.Marshal(e)
+	return out, nil
+}
+
+func streamArray[T any](out *bufio.Writer, items []T) error {
+	for i, item := range items {
+		line, err := json.Marshal(item)
 		if err != nil {
 			return err
 		}
@@ -91,7 +103,7 @@ func RenderJSON(w io.Writer, res timeline.Result) error {
 			return err
 		}
 	}
-	if len(env.Events) > 0 {
+	if len(items) > 0 {
 		if _, err := out.WriteString("\n  "); err != nil {
 			return err
 		}

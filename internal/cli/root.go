@@ -31,6 +31,7 @@ func NewRootCmd() *cobra.Command {
 		newTimelineCmd(),
 		newEventsCmd(),
 		newInspectCmd(),
+		newIncidentsCmd(),
 		newSourcesCmd(),
 		newDoctorCmd(),
 		newTuiCmd(),
