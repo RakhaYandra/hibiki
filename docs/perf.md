@@ -99,9 +99,13 @@ times one full `Run`: 4,520 incidents in 14.9 ms against the 500 ms constant.
 The `-race` figure of 97 ms leaves roughly 5x headroom on this 16 thread runner.
 The fixture is deliberately the expensive shape: 3,920 of its 4,520 incidents
 come from `dependency-error` alone, and the other three rules contribute 200
-each. That fan-out is also the only place an event is reused: 405 of the 10,000
-events are evidence in more than one `dependency-error` incident, while the
-other three rules never name the same event twice.
+each. Within a rule an event is evidence once, with one exception:
+`restart-loop` and `pid-errors` resume past the run they emitted and
+`failed-then-error` keeps a suppression deadline per unit and boot, so none of
+the three names an event twice, while 405 of the 10,000 events are evidence in
+more than one `dependency-error` incident. Across rules there is no such guard,
+since the rules are independent passes over the same list: 400 events are
+evidence under more than one rule, 320 of them under all four.
 
 The real journal tells the other side of that number.
 `hibiki timeline --since 7d --limit 10000 --format json` returned 10,000 events,

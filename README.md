@@ -44,7 +44,8 @@ hibiki
 The `inspect` and `incidents` samples were produced with
 `HIBIKI_JOURNAL_FILE=test/fixtures/regression/crash-loop.jsonl` set, so the
 output in those two sections is the fixture in this repository and not a real
-journal.
+journal. The `sources`, `doctor` and `tui` samples come from a live journal on a
+real machine.
 
 ### timeline
 
