@@ -41,9 +41,10 @@ hibiki
 └── version
 ```
 
-Every sample below was produced with
+The `inspect` and `incidents` samples were produced with
 `HIBIKI_JOURNAL_FILE=test/fixtures/regression/crash-loop.jsonl` set, so the
-output shown is the fixture in this repository and not a real journal.
+output in those two sections is the fixture in this repository and not a real
+journal.
 
 ### timeline
 
@@ -439,5 +440,6 @@ Layout and invariants: [docs/architecture.md](docs/architecture.md).
   matrices.
 
 Status: the journal adapter, event model, timeline engine, correlation engine,
-CLI, and TUI are all in scope and in the tree. A binary's version comes from the
-newest tag, so a build from `main` names the last tag plus the commits after it.
+CLI, and TUI are all in scope and in the tree. `make build` takes the version
+from the newest tag, so a build from `main` names the last tag plus the commits
+after it; a plain `go build ./cmd/hibiki` reports `dev`.

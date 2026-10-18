@@ -26,9 +26,11 @@ garbage collector, so a run can land anywhere between roughly 76 MB and 90 MB
 depending on when the collector fires; the streaming writer below is what keeps
 it in that band instead of 270 MB.
 
-Those six rows are the PRD 14 budgets. Correlation is not one of them: the
-500 ms below is a constant in `internal/correlation/perf_test.go`, and
-`TestRunWithinBudget` fails when a run passes it.
+## Correlation budget
+
+Correlation is not a PRD 14 budget: the 500 ms below is a constant in
+`internal/correlation/perf_test.go`, and `TestRunWithinBudget` fails when a run
+takes more than it.
 
 | Metric                  | Target                         | Measured                                  |
 | ----------------------- | ------------------------------ | ----------------------------------------- |
@@ -97,10 +99,13 @@ times one full `Run`: 4,520 incidents in 14.9 ms against the 500 ms constant.
 The `-race` figure of 97 ms leaves roughly 5x headroom on this 16 thread runner.
 The fixture is deliberately the expensive shape: 3,920 of its 4,520 incidents
 come from `dependency-error` alone, and the other three rules contribute 200
-each.
+each. That fan-out is also the only place an event is reused: 405 of the 10,000
+events are evidence in more than one `dependency-error` incident, while the
+other three rules never name the same event twice.
 
-The real journal tells the other side of that number. `hibiki incidents --since
-7d --limit 10000 --format json` returned 10,000 events and 1 incident, a
+The real journal tells the other side of that number.
+`hibiki timeline --since 7d --limit 10000 --format json` returned 10,000 events,
+and `hibiki incidents` with that window and limit returned 1 incident, a
 `pid-errors` match, in 0.58 s at 79.1 MB peak RSS, so a quiet desktop never
 approaches the synthetic worst case.
 

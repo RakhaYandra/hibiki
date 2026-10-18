@@ -131,8 +131,9 @@ anything. Both are exit 0: an empty result is a successful query.
 
 Check, in this order:
 
-1. Is the window wide enough for the rule? `restart-loop` looks 5 minutes ahead of
-   each event, so three failures spread over ten minutes never meet.
+1. Is the window wide enough for the rule? `restart-loop` takes the longest run
+   of restart or failure events of one unit whose span fits in 5 minutes from
+   the first of them, so three failures spread over ten minutes never meet.
 2. Is `--limit` cutting the input? Correlation runs on the result of the query, so
    the default 200 events is all the rules see. `--limit 1000` widens it.
 3. Does the window carry the fields a rule needs? `pid-errors` needs a

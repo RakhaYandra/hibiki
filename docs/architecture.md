@@ -118,12 +118,12 @@ every exit code (including 130 for an interrupt) is decided in `internal/cli`.
   another, and no reason string a rule can emit does either: each says only what
   was seen inside the window, either a count of events or the two unit names and
   which one came first.
-- `restart-loop`, `pid-errors` and `failed-then-error` yield one incident per
-  cluster of a unit: each resumes after the run it emitted, or records a
-  suppression deadline at the primary. `dependency-error` fans out instead, one
-  incident per other unit over the same primary, so one event can be the primary
-  of several incidents of that rule: 405 of the 10,000 events of the performance
-  fixture are evidence in more than one of them.
+- `restart-loop`, `failed-then-error` and `pid-errors` yield one incident per
+  cluster: a unit and boot for the first two, a pid and boot for `pid-errors`.
+  Each resumes after the run it emitted, or records a suppression deadline at the
+  primary, so no event is evidence of two incidents of the same rule.
+  `dependency-error` fans out instead, one incident per other unit over the same
+  primary, so one event can be the primary of several incidents of that rule.
 - A failure to read one source degrades the answer instead of hiding it: the
   event list may still be useful, and the envelope says which source was missing.
 - The core never imports Charm: bubbletea and its companions stay inside
