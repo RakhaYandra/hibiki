@@ -178,10 +178,14 @@ func renderInspectText(w io.Writer, found inspect.Context, incs []correlation.In
 	side("Before", found.Before)
 	side("After", found.After)
 
+	// The context window sizes the evidence, the rule window is what the
+	// incident claims to have looked at: naming the second one is the only way
+	// a reader can tell the two apart.
 	if len(incs) > 0 {
 		fmt.Fprintf(out, "\nCorrelations (%d)\n", len(incs))
 		for _, inc := range incs {
 			fmt.Fprintf(out, "  %s %s [%s]\n", inc.ID, inc.Rule, inc.Confidence)
+			fmt.Fprintf(out, "    window inspected %s .. %s\n", inc.WindowStart.Format(time.RFC3339Nano), inc.WindowEnd.Format(time.RFC3339Nano))
 			fmt.Fprintf(out, "    %s\n", inc.Reason)
 		}
 	}

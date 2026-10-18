@@ -158,10 +158,6 @@ func (m Model) detailLines() []string {
 		source += "   boot " + *ev.Source.BootID
 	}
 	lines = append(lines, source)
-	for _, inc := range d.incs {
-		lines = append(lines, fmt.Sprintf("correlation %s %s [%s]", inc.ID, inc.Rule, inc.Confidence))
-		lines = append(lines, "  "+oneLine(inc.Reason))
-	}
 
 	lines = append(lines, fmt.Sprintf("fields (%d)", len(ev.Raw)))
 	keys := make([]string, 0, len(ev.Raw))
@@ -183,6 +179,10 @@ func (m Model) detailLines() []string {
 	lines = append(lines, fmt.Sprintf("after (%d)", len(d.ctx.After)))
 	for _, next := range d.ctx.After {
 		lines = append(lines, "  "+m.rowText(next))
+	}
+	for _, inc := range d.incs {
+		lines = append(lines, fmt.Sprintf("correlation %s %s [%s]", inc.ID, inc.Rule, inc.Confidence))
+		lines = append(lines, "  "+oneLine(inc.Reason))
 	}
 	if len(d.ctx.Limitations) > 0 {
 		lines = append(lines, "limitations: "+strings.Join(d.ctx.Limitations, " "))

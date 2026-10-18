@@ -140,6 +140,35 @@ func TestDetailExplainsEachIncidentOnItsOwnLine(t *testing.T) {
 	}
 }
 
+func TestDetailReportsOnlyTheIncidentsOfTheEvent(t *testing.T) {
+	lines := crashLoopDetail(t, "s=cl;i=1").detailLines()
+	var correlations []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "correlation ") {
+			correlations = append(correlations, line)
+		}
+	}
+	if len(correlations) != 1 || !strings.Contains(correlations[0], "restart-loop [high]") {
+		t.Fatalf("correlation lines = %v, want only the incident the first record takes part in", correlations)
+	}
+}
+
+func TestDetailShowsTheEvidenceBeforeTheIncidents(t *testing.T) {
+	lines := crashLoopDetail(t, "s=cl;i=3").detailLines()
+	after, correlation := -1, -1
+	for i, line := range lines {
+		if after < 0 && strings.HasPrefix(line, "after (") {
+			after = i
+		}
+		if correlation < 0 && strings.HasPrefix(line, "correlation ") {
+			correlation = i
+		}
+	}
+	if after < 0 || correlation < 0 || correlation < after {
+		t.Fatalf("after = %d, correlation = %d, want the evidence rows first:\n%s", after, correlation, strings.Join(lines, "\n"))
+	}
+}
+
 func TestDetailShowsNoCorrelationLineWhenNoRuleMatches(t *testing.T) {
 	single := manyFakeEvents(1)
 	loaded := openLoadedDetail(t, detailModel(t, newFakeSource(single...), 2*time.Minute, single))

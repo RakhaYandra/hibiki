@@ -202,7 +202,7 @@ func TestInspectDoesNotClaimCausality(t *testing.T) {
 		}
 	}
 	if got.CorrelationIDs() != nil && len(got.CorrelationIDs()) != 0 {
-		t.Errorf("v0.1.0 has no correlation data: %v", got.CorrelationIDs())
+		t.Errorf("ForEvent only gathers the window, Correlate stamps the ids: %v", got.CorrelationIDs())
 	}
 }
 

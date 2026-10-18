@@ -55,6 +55,11 @@ func crashLoopEvents(t *testing.T) []event.Event {
 
 func crashLoopInspect(t *testing.T, cursor, format string) cliResult {
 	t.Helper()
+	return crashLoopInspectContext(t, cursor, "2m", format)
+}
+
+func crashLoopInspectContext(t *testing.T, cursor, window, format string) cliResult {
+	t.Helper()
 	evs := crashLoopEvents(t)
 	target := event.Event{}
 	for _, ev := range evs {
@@ -66,7 +71,7 @@ func crashLoopInspect(t *testing.T, cursor, format string) cliResult {
 		t.Fatalf("the fixture has no event at cursor %s", cursor)
 	}
 	path := saveEnvelope(t, timeline.Result{Events: evs})
-	args := []string{"inspect", target.ID, "--file", path, "--context", "2m"}
+	args := []string{"inspect", target.ID, "--file", path, "--context", window}
 	if format != "" {
 		args = append(args, "--format", format)
 	}
@@ -219,6 +224,106 @@ func TestInspectShowsTheIncidentsOfTheEvent(t *testing.T) {
 	sources := strings.Index(res.stdout, "\nSources")
 	if after < 0 || correlations < after || sources < correlations {
 		t.Errorf("section order wrong: after = %d, correlations = %d, sources = %d:\n%s", after, correlations, sources, res.stdout)
+	}
+}
+
+func TestInspectNamesTheWindowEachRuleInspected(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=3", "")
+	windows := 0
+	for _, line := range strings.Split(res.stdout, "\n") {
+		rest, ok := strings.CutPrefix(line, "    window inspected ")
+		if !ok {
+			continue
+		}
+		windows++
+		start, end, ok := strings.Cut(rest, " .. ")
+		if !ok {
+			t.Fatalf("window line = %q, want a start and an end", line)
+		}
+		from, err := time.Parse(time.RFC3339Nano, start)
+		if err != nil {
+			t.Errorf("window start %q: %v", start, err)
+			continue
+		}
+		until, err := time.Parse(time.RFC3339Nano, end)
+		if err != nil {
+			t.Errorf("window end %q: %v", end, err)
+			continue
+		}
+		if !until.After(from) {
+			t.Errorf("window line = %q, want the end after the start", line)
+		}
+	}
+	if windows != 3 {
+		t.Errorf("window lines = %d, want one per incident:\n%s", windows, res.stdout)
+	}
+}
+
+// A narrow context fetches less evidence than the rule claims to have looked
+// at, so the reported window is the only way to tell the two apart.
+func TestInspectReportsTheRuleWindowWithANarrowContext(t *testing.T) {
+	res := crashLoopInspectContext(t, "s=cl;i=3", "5ms", "")
+	if !strings.Contains(res.stdout, "window inspected ") {
+		t.Errorf("the rule window must be reported even when the evidence is narrow:\n%s", res.stdout)
+	}
+	if !strings.Contains(res.stdout, "Correlations (2)") {
+		t.Errorf("a 5ms window leaves only the events 2ms apart:\n%s", res.stdout)
+	}
+	if strings.Contains(res.stdout, "restart-loop") {
+		t.Errorf("three restart candidates never reached the window:\n%s", res.stdout)
+	}
+}
+
+func TestInspectExplainsEveryIncidentItPrints(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=3", "json")
+	var doc struct {
+		Correlations []struct {
+			ID     string `json:"id"`
+			Reason string `json:"reason"`
+		} `json:"correlations"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &doc); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, res.stdout)
+	}
+	text := crashLoopInspect(t, "s=cl;i=3", "")
+	for _, inc := range doc.Correlations {
+		if inc.Reason == "" {
+			t.Fatalf("incident %s carries no reason to print:\n%s", inc.ID, res.stdout)
+		}
+		if !strings.Contains(text.stdout, inc.Reason) {
+			t.Errorf("the text left out the reason of %s (%q):\n%s", inc.ID, inc.Reason, text.stdout)
+		}
+	}
+}
+
+// Only the restart-loop incident covers the very first record of the fixture,
+// so the report must narrow to what the inspected event takes part in.
+func TestInspectReportsOnlyTheIncidentsOfTheEvent(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=1", "")
+	if !strings.Contains(res.stdout, "Correlations (1)") {
+		t.Fatalf("the first record takes part in one incident:\n%s", res.stdout)
+	}
+	if !strings.Contains(res.stdout, "restart-loop [high]") {
+		t.Errorf("the incident is missing:\n%s", res.stdout)
+	}
+	for _, rule := range []string{"failed-then-error", "pid-errors"} {
+		if strings.Contains(res.stdout, rule) {
+			t.Errorf("rule %q covers no record of the first event:\n%s", rule, res.stdout)
+		}
+	}
+
+	asJSON := crashLoopInspect(t, "s=cl;i=1", "json")
+	var view struct {
+		Correlations []struct {
+			ID   string `json:"id"`
+			Rule string `json:"rule"`
+		} `json:"correlations"`
+	}
+	if err := json.Unmarshal([]byte(asJSON.stdout), &view); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, asJSON.stdout)
+	}
+	if len(view.Correlations) != 1 || view.Correlations[0].Rule != "restart-loop" {
+		t.Errorf("correlations = %+v, want only the restart-loop incident", view.Correlations)
 	}
 }
 
