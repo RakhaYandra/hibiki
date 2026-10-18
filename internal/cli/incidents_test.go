@@ -130,6 +130,20 @@ func TestIncidentsEmptyReadable(t *testing.T) {
 	}
 }
 
+func TestIncidentsNothingObservedIsNotAnEmptyResult(t *testing.T) {
+	src := &recordingSource{name: "test"}
+	res := runCLI(t, cliDeps{sources: []source.Source{src}, now: testNow}, "incidents", "--since", "1h")
+	if res.code != 0 {
+		t.Fatalf("a readable source with no records is not an error: exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "no events matched in the requested window") {
+		t.Errorf("no rule ran, so the wording must match the timeline list:\n%s", res.stdout)
+	}
+	if strings.Contains(res.stdout, "No incidents found.") {
+		t.Errorf("the query never produced a correlation result:\n%s", res.stdout)
+	}
+}
+
 func TestIncidentsJSONOnAnEmptyResultIsAnArray(t *testing.T) {
 	src := &recordingSource{name: "test", evs: manyEvents(3)}
 	res := runCLI(t, cliDeps{sources: []source.Source{src}, now: testNow}, "incidents", "--since", "1h", "--format", "json")

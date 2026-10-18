@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -187,6 +188,64 @@ func TestRenderIncidentsJSONEmptyResultIsValid(t *testing.T) {
 	}
 }
 
+func TestRenderIncidentsJSONNilRelatedIsAnArray(t *testing.T) {
+	hand := []correlation.Incident{{
+		ID:          "inc_000000000000",
+		Rule:        "restart-loop",
+		Confidence:  correlation.ConfidenceHigh,
+		Reason:      "example.service: 3 restart or failure events within 5m",
+		Primary:     sampleEvent(),
+		WindowStart: sampleEvent().Timestamp,
+		WindowEnd:   sampleEvent().Timestamp,
+	}}
+	var buf bytes.Buffer
+	if err := RenderIncidentsJSON(&buf, sampleResult(), hand); err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Incidents []struct {
+			Related []struct {
+				ID string `json:"id"`
+			} `json:"related"`
+		} `json:"incidents"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &view); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, buf.String())
+	}
+	if len(view.Incidents) != 1 {
+		t.Fatalf("incidents = %d", len(view.Incidents))
+	}
+	if view.Incidents[0].Related == nil {
+		t.Errorf("a nil related list must render as an array, not null:\n%s", buf.String())
+	}
+}
+
+func TestRenderIncidentsJSONKeepsTheEngineIncidentShape(t *testing.T) {
+	incs := incidentSample(t)
+	engine, err := json.Marshal(incs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := RenderIncidentsJSON(&buf, incidentSampleResult(), incs); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Incidents []json.RawMessage `json:"incidents"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, buf.String())
+	}
+	if len(doc.Incidents) == 0 {
+		t.Fatalf("no incident rendered:\n%s", buf.String())
+	}
+	got := topLevelKeys(t, string(doc.Incidents[0]))
+	want := topLevelKeys(t, string(engine))
+	if !slices.Equal(got, want) {
+		t.Errorf("rendered incident fields %v, engine fields %v: the projection must not add, drop or reorder one", got, want)
+	}
+}
+
 func TestRenderIncidentsTextNamesRuleConfidenceReasonAndEvidence(t *testing.T) {
 	incs := incidentSample(t)
 	var buf bytes.Buffer
@@ -197,31 +256,54 @@ func TestRenderIncidentsTextNamesRuleConfidenceReasonAndEvidence(t *testing.T) {
 	for _, want := range []string{
 		"Incidents (2)",
 		incs[0].ID + " " + incs[0].Rule + " [" + string(incs[0].Confidence) + "]",
-		"window ",
+		"window inspected ",
 		"reason " + incs[0].Reason,
 		"primary ",
 		"related ",
 		"Sources",
+		"covered: ",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("incidents text lost %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "because") || strings.Contains(out, "caused by") {
-		t.Errorf("rendered text must not assert causality:\n%s", out)
+	lowered := strings.ToLower(out)
+	for _, banned := range []string{"because", "caused by"} {
+		if strings.Contains(lowered, banned) {
+			t.Errorf("rendered text must not assert causality (%q):\n%s", banned, out)
+		}
 	}
 }
 
-func TestRenderIncidentsTextWithoutIncidentsStillReportsSources(t *testing.T) {
+func TestRenderIncidentsTextWithNoRuleMatchKeepsTheEmptyResultWording(t *testing.T) {
 	var buf bytes.Buffer
 	if err := RenderIncidentsText(&buf, sampleResult(), nil, TextOptions{Now: fixedNow()}); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Incidents (0)", "No incidents found.", "Sources", "systemd-journal"} {
+	for _, want := range []string{"Incidents (0)", "No incidents found.", "Sources", "systemd-journal", "covered: "} {
 		if !strings.Contains(out, want) {
 			t.Errorf("an empty answer still reports what was read:\n%s", out)
 		}
+	}
+	if strings.Contains(out, "no events matched") {
+		t.Errorf("events were read, so this is an empty correlation result, not an empty query:\n%s", out)
+	}
+}
+
+func TestRenderIncidentsTextWithNothingObservedDoesNotClaimAnEmptySearch(t *testing.T) {
+	var buf bytes.Buffer
+	if err := RenderIncidentsText(&buf, timeline.Result{}, nil, TextOptions{Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Incidents (0)", "no events matched in the requested window", "covered: ", "nothing observed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("a query that read nothing must say so (%q):\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "No incidents found.") {
+		t.Errorf("no rule ran over zero events, so no correlation result was produced:\n%s", out)
 	}
 }
 

@@ -6,7 +6,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/source"
 	"github.com/RakhaYandra/hibiki/internal/timeline"
@@ -137,6 +139,69 @@ func TestRenderJSONStreamsTheSameDocumentAsTheEnvelope(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("streamed envelope differs from the envelope:\n%s\n%s", streamed.String(), whole)
+	}
+}
+
+// The envelope is a published document, so its bytes are pinned here. Decoding
+// both documents into maps cannot see a reordered field, which is the one
+// change a machine consumer notices first.
+func TestRenderJSONDocumentBytesArePinned(t *testing.T) {
+	restore := nowFunc
+	nowFunc = fixedNow
+	t.Cleanup(func() { nowFunc = restore })
+
+	var buf bytes.Buffer
+	if err := RenderJSON(&buf, goldenResult()); err != nil {
+		t.Fatal(err)
+	}
+	const want = `{
+  "schema_version": 1,
+  "generated_at": "2026-10-16T08:30:00Z",
+  "covered_since": "2026-10-16T08:15:30Z",
+  "covered_until": "2026-10-16T08:15:30Z",
+  "truncated": false,
+  "next_cursor": null,
+  "sources": [
+    {
+      "name": "systemd-journal",
+      "available": true,
+      "detail": "journal is readable"
+    }
+  ],
+  "limitations": [],
+  "events": [
+    {"schema_version":1,"id":"evt_golden","timestamp":"2026-10-16T08:15:30Z","timestamp_unix_us":1792138530000000,"timestamp_monotonic_us":null,"time_basis":"realtime","source":{"type":"systemd-journal","boot_id":null,"cursor":null},"category":"service","severity":"info","message":"started","service":{"unit":"example.service","active_state":null,"sub_state":null,"result":null},"process":{"pid":null,"comm":null,"executable":null},"correlation_ids":[],"raw":{},"limitations":[]}
+  ]
+}
+`
+	if buf.String() != want {
+		t.Errorf("the emitted document changed:\ngot:\n%s\nwant:\n%s", buf.String(), want)
+	}
+}
+
+func goldenResult() timeline.Result {
+	ts := time.Date(2026, 10, 16, 8, 15, 30, 0, time.UTC)
+	unit := "example.service"
+	return timeline.Result{
+		Events: []event.Event{{
+			SchemaVersion:   event.SchemaVersion,
+			ID:              "evt_golden",
+			Timestamp:       ts,
+			TimestampUnixUS: ts.UnixMicro(),
+			TimeBasis:       event.TimeBasisRealtime,
+			Source:          event.Source{Type: "systemd-journal"},
+			Category:        event.CategoryService,
+			Severity:        event.SeverityInfo,
+			Message:         "started",
+			Service:         event.Service{Unit: &unit},
+			CorrelationIDs:  []string{},
+			Raw:             map[string]string{},
+			Limitations:     []string{},
+		}},
+		CoveredSince: ts,
+		CoveredUntil: ts,
+		Sources:      []source.Status{{Name: "systemd-journal", Available: true, Detail: "journal is readable"}},
+		Limitations:  []string{},
 	}
 }
 

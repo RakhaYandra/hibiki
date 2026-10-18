@@ -72,8 +72,6 @@ func streamHead(w io.Writer, env Envelope, key string) (*bufio.Writer, error) {
 	if n := len(head); n == 0 || head[n-1] != '}' {
 		return nil, errors.New("cannot render the envelope head")
 	}
-	// Drop the closing brace and the newline before it, then the array closes
-	// the object.
 	head = bytes.TrimRight(head[:len(head)-1], "\n")
 	out := bufio.NewWriter(w)
 	if _, err := out.Write(head); err != nil {

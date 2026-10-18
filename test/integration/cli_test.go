@@ -557,6 +557,20 @@ func TestCLIIncidentsWindowFlagCanSilenceEveryRule(t *testing.T) {
 	}
 }
 
+func TestCLIIncidentsWithAnEmptyWindowDoesNotClaimAnEmptySearch(t *testing.T) {
+	res := runCLI(t, envWith(map[string]string{"HIBIKI_JOURNAL_FILE": fixture(t, "crash-loop.jsonl")}),
+		"incidents", "--since", "2020-01-01T00:00:00Z", "--until", "2020-01-02T00:00:00Z")
+	if res.code != 0 {
+		t.Fatalf("an empty window is not an error: exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "no events matched in the requested window") {
+		t.Errorf("no rule ran over zero events:\n%s", res.stdout)
+	}
+	if strings.Contains(res.stdout, "No incidents found.") {
+		t.Errorf("a query that read nothing never produced a correlation result:\n%s", res.stdout)
+	}
+}
+
 func TestCLIIncidentsUnreadableSourceFailsClearly(t *testing.T) {
 	missing, err := filepath.Abs(filepath.Join(repoRoot, "test", "fixtures", "regression", "missing-journal.jsonl"))
 	if err != nil {

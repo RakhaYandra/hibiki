@@ -20,7 +20,39 @@ func RenderIncidentsJSON(w io.Writer, res timeline.Result, incs []correlation.In
 	if err != nil {
 		return err
 	}
-	return streamArray(out, sliceOrEmpty(incs))
+	return streamArray(out, jsonIncidents(incs))
+}
+
+// A hand-built incident can arrive with a nil Related, which encoding/json
+// writes as null. The projection gives every incident the same array shape,
+// and it lists the engine fields in the engine's own order because an embedded
+// shadowed field would be marshalled last and change the published shape.
+type jsonIncident struct {
+	ID          string                 `json:"id"`
+	Rule        string                 `json:"rule"`
+	Confidence  correlation.Confidence `json:"confidence"`
+	Reason      string                 `json:"reason"`
+	Primary     event.Event            `json:"primary"`
+	Related     []event.Event          `json:"related"`
+	WindowStart time.Time              `json:"window_start"`
+	WindowEnd   time.Time              `json:"window_end"`
+}
+
+func jsonIncidents(incs []correlation.Incident) []jsonIncident {
+	out := make([]jsonIncident, 0, len(incs))
+	for _, inc := range incs {
+		out = append(out, jsonIncident{
+			ID:          inc.ID,
+			Rule:        inc.Rule,
+			Confidence:  inc.Confidence,
+			Reason:      inc.Reason,
+			Primary:     inc.Primary,
+			Related:     sliceOrEmpty(inc.Related),
+			WindowStart: inc.WindowStart,
+			WindowEnd:   inc.WindowEnd,
+		})
+	}
+	return out
 }
 
 func RenderIncidentsText(w io.Writer, res timeline.Result, incs []correlation.Incident, opts TextOptions) error {
@@ -31,13 +63,20 @@ func RenderIncidentsText(w io.Writer, res timeline.Result, incs []correlation.In
 	out := bufio.NewWriter(w)
 
 	fmt.Fprintf(out, "Incidents (%d)\n", len(incs))
-	if len(incs) == 0 {
-		fmt.Fprintln(out, "\nNo incidents found.")
-	} else {
+	switch {
+	case len(incs) > 0:
 		for _, inc := range incs {
 			renderIncident(out, inc, loc, opts.Color)
 		}
+	case len(res.Events) == 0:
+		// No rule ran over zero events, so there is no correlation result to
+		// report: the wording stays the one the timeline list uses for the
+		// same fact instead of claiming a search came up empty.
+		fmt.Fprintln(out, "\nno events matched in the requested window")
+	default:
+		fmt.Fprintln(out, "\nNo incidents found.")
 	}
+	fmt.Fprintf(out, "covered: %s\n", coverageLabel(res))
 
 	fmt.Fprintln(out, "\nSources")
 	for _, s := range res.Sources {
@@ -67,7 +106,7 @@ func RenderIncidentsText(w io.Writer, res timeline.Result, incs []correlation.In
 // reading the same way here and in the timeline list.
 func renderIncident(out *bufio.Writer, inc correlation.Incident, loc *time.Location, color bool) {
 	fmt.Fprintf(out, "\n  %s %s [%s]\n", inc.ID, inc.Rule, inc.Confidence)
-	fmt.Fprintf(out, "    window %s .. %s\n", inc.WindowStart.Format(time.RFC3339Nano), inc.WindowEnd.Format(time.RFC3339Nano))
+	fmt.Fprintf(out, "    window inspected %s .. %s\n", inc.WindowStart.Format(time.RFC3339Nano), inc.WindowEnd.Format(time.RFC3339Nano))
 	fmt.Fprintf(out, "    reason %s\n", inc.Reason)
 	fmt.Fprintf(out, "    primary   %s\n", incidentEventLine(inc.Primary, loc, color))
 	fmt.Fprintf(out, "    related %d\n", len(inc.Related))
