@@ -31,11 +31,13 @@ func perfFixture() []event.Event {
 	return evs
 }
 
-// The 2s stagger between units is what puts one unit's failure inside another
-// unit's 30s window, so dependency-error fires at all. Slot 4 sits one step
-// past the 30s window anchored at slot 0, so it joins dependency-error and
-// nothing else. The other 45 slots are ordinary application warnings that no
-// rule selects.
+// Slot 4 is evidence only for dependency-error, reachable only through the 2s
+// stagger: the failure of a unit 21 to 35 places later lands 2s to 30s after
+// it, and with no stagger no error event lands after it. The 30s windows of
+// failed-then-error and pid-errors stop at slot 3, boundary included, and both
+// anchor at slot 0. restart-loop has the room, +40s is well inside its 5m
+// window, and the application category is what keeps slot 4 out. The other 45
+// slots are ordinary application warnings that no rule selects.
 func perfSlot(unit, slot int) event.Event {
 	boot := unit / perfBootSpan
 	base := baseUS + int64(boot)*perfBootGap + int64(unit%perfBootSpan)*perfUnitStep
