@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RakhaYandra/hibiki/internal/correlation"
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/inspect"
@@ -65,11 +66,12 @@ func runInspect(cmd *cobra.Command, eventID string, window time.Duration, file, 
 	if err != nil {
 		return err
 	}
+	found, incs := inspect.Correlate(found)
 
 	if format == "json" {
-		return renderInspectJSON(cmd.OutOrStdout(), found)
+		return renderInspectJSON(cmd.OutOrStdout(), found, incs)
 	}
-	return renderInspectText(cmd.OutOrStdout(), found, window, nowFunc().Location())
+	return renderInspectText(cmd.OutOrStdout(), found, incs, window, nowFunc().Location())
 }
 
 func loadEvent(file, eventID string) (event.Event, timeline.Result, error) {
@@ -88,20 +90,22 @@ func loadEvent(file, eventID string) (event.Event, timeline.Result, error) {
 }
 
 type inspectView struct {
-	SchemaVersion int                   `json:"schema_version"`
-	Event         event.Event           `json:"event"`
-	Before        []event.Event         `json:"before"`
-	After         []event.Event         `json:"after"`
-	Sources       []output.SourceStatus `json:"sources"`
-	Limitations   []string              `json:"limitations"`
+	SchemaVersion int                    `json:"schema_version"`
+	Event         event.Event            `json:"event"`
+	Before        []event.Event          `json:"before"`
+	After         []event.Event          `json:"after"`
+	Correlations  []correlation.Incident `json:"correlations"`
+	Sources       []output.SourceStatus  `json:"sources"`
+	Limitations   []string               `json:"limitations"`
 }
 
-func renderInspectJSON(w io.Writer, found inspect.Context) error {
+func renderInspectJSON(w io.Writer, found inspect.Context, incs []correlation.Incident) error {
 	view := inspectView{
 		SchemaVersion: event.SchemaVersion,
 		Event:         found.Event,
 		Before:        found.Before,
 		After:         found.After,
+		Correlations:  incs,
 		Sources:       output.SourceStatuses(found.Sources),
 		Limitations:   found.Limitations,
 	}
@@ -111,6 +115,9 @@ func renderInspectJSON(w io.Writer, found inspect.Context) error {
 	if view.After == nil {
 		view.After = []event.Event{}
 	}
+	if view.Correlations == nil {
+		view.Correlations = []correlation.Incident{}
+	}
 	if view.Limitations == nil {
 		view.Limitations = []string{}
 	}
@@ -119,7 +126,7 @@ func renderInspectJSON(w io.Writer, found inspect.Context) error {
 	return enc.Encode(view)
 }
 
-func renderInspectText(w io.Writer, found inspect.Context, window time.Duration, loc *time.Location) error {
+func renderInspectText(w io.Writer, found inspect.Context, incs []correlation.Incident, window time.Duration, loc *time.Location) error {
 	out := bufio.NewWriter(w)
 	e := found.Event
 
@@ -171,6 +178,14 @@ func renderInspectText(w io.Writer, found inspect.Context, window time.Duration,
 	side("Before", found.Before)
 	side("After", found.After)
 
+	if len(incs) > 0 {
+		fmt.Fprintf(out, "\nCorrelations (%d)\n", len(incs))
+		for _, inc := range incs {
+			fmt.Fprintf(out, "  %s %s [%s]\n", inc.ID, inc.Rule, inc.Confidence)
+			fmt.Fprintf(out, "    %s\n", inc.Reason)
+		}
+	}
+
 	fmt.Fprintln(out, "\nSources")
 	for _, s := range found.Sources {
 		state := "ok"
@@ -203,11 +218,10 @@ func unitOrDash(e event.Event) string {
 	return *e.Service.Unit
 }
 
-// v0.1.0 records no correlation ids, and an empty list must read as "none"
-// rather than as a missing value.
+// An empty list must read as "none" rather than as a missing value.
 func correlationLabel(e event.Event) string {
 	if len(e.CorrelationIDs) == 0 {
-		return "none (correlation arrives in v0.3.0)"
+		return "none"
 	}
 	return strings.Join(e.CorrelationIDs, ", ")
 }

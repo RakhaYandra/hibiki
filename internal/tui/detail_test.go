@@ -3,6 +3,8 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/inspect"
 	"github.com/RakhaYandra/hibiki/internal/source"
+	"github.com/RakhaYandra/hibiki/internal/source/journal"
 )
 
 func detailModel(t *testing.T, fake *fakeSource, window time.Duration, evs []event.Event) Model {
@@ -38,6 +41,114 @@ func rawEvent(n int) event.Event {
 	}
 	ev.Raw = raw
 	return ev
+}
+
+// The crash-loop fixture is read through the journal adapter so the detail pane
+// correlates the same records a journal would carry.
+func crashLoopEvents(t *testing.T) []event.Event {
+	t.Helper()
+	f, err := os.Open(filepath.Join("..", "..", "test", "fixtures", "regression", "crash-loop.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	evs := []event.Event{}
+	if err := journal.Decode(f, func(fields map[string]string) error {
+		ev, err := journal.Normalize(fields)
+		if err != nil {
+			return err
+		}
+		evs = append(evs, ev)
+		return nil
+	}, func(line int, err error) {
+		t.Errorf("fixture line %d: %v", line, err)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return evs
+}
+
+func openLoadedDetail(t *testing.T, m Model) Model {
+	t.Helper()
+	opened, cmd := press(t, m, "enter")
+	if cmd == nil {
+		t.Fatal("cmd = nil, want the context query to run")
+	}
+	model, _ := opened.Update(cmd())
+	loaded, ok := model.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want tui.Model", model)
+	}
+	return loaded
+}
+
+func crashLoopDetail(t *testing.T, cursor string) Model {
+	t.Helper()
+	evs := crashLoopEvents(t)
+	selected := -1
+	for i, ev := range evs {
+		if ev.Source.Cursor != nil && *ev.Source.Cursor == cursor {
+			selected = i
+		}
+	}
+	if selected < 0 {
+		t.Fatalf("the fixture has no event at cursor %s", cursor)
+	}
+	m := detailModel(t, newFakeSource(evs...), 2*time.Minute, evs)
+	m.selected = selected
+	return openLoadedDetail(t, m)
+}
+
+func TestDetailListsTheIncidentOfTheEvent(t *testing.T) {
+	loaded := crashLoopDetail(t, "s=cl;i=3")
+
+	var correlations []string
+	for _, line := range loaded.detailLines() {
+		if strings.HasPrefix(line, "correlation ") {
+			correlations = append(correlations, line)
+		}
+	}
+	if len(correlations) != 3 {
+		t.Fatalf("correlation lines = %d, want one per incident of the event:\n%s", len(correlations), strings.Join(loaded.detailLines(), "\n"))
+	}
+	for _, want := range []string{"restart-loop [high]", "failed-then-error [medium]", "pid-errors [low]"} {
+		if !strings.Contains(strings.Join(correlations, "\n"), want) {
+			t.Errorf("correlation lines lost %q:\n%s", want, strings.Join(correlations, "\n"))
+		}
+	}
+	for i, line := range correlations {
+		if !strings.HasPrefix(line, "correlation inc_") {
+			t.Errorf("line %d = %q, want the incident id first", i, line)
+		}
+	}
+}
+
+func TestDetailExplainsEachIncidentOnItsOwnLine(t *testing.T) {
+	lines := crashLoopDetail(t, "s=cl;i=3").detailLines()
+	explained := 0
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "correlation ") {
+			continue
+		}
+		if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "  ") || !strings.Contains(lines[i+1], "within") {
+			t.Fatalf("line %d = %q has no indented reason after it:\n%s", i, line, strings.Join(lines, "\n"))
+		}
+		explained++
+	}
+	if explained != 3 {
+		t.Fatalf("explained = %d, want a reason for every incident:\n%s", explained, strings.Join(lines, "\n"))
+	}
+}
+
+func TestDetailShowsNoCorrelationLineWhenNoRuleMatches(t *testing.T) {
+	single := manyFakeEvents(1)
+	loaded := openLoadedDetail(t, detailModel(t, newFakeSource(single...), 2*time.Minute, single))
+
+	for _, line := range loaded.detailLines() {
+		if strings.HasPrefix(line, "correlation ") {
+			t.Errorf("line = %q, want no correlation line at all:\n%s", line, strings.Join(loaded.detailLines(), "\n"))
+		}
+	}
 }
 
 func TestOpenDetailUsesTheConfiguredContextWindow(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/RakhaYandra/hibiki/internal/correlation"
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/exit"
 	"github.com/RakhaYandra/hibiki/internal/source"
@@ -28,6 +29,24 @@ func (c *Context) AddLimitation(name string) {
 }
 
 func (c Context) CorrelationIDs() []string { return c.Event.CorrelationIDs }
+
+// The surrounding events are already in hand here, so one engine call covers
+// the whole context window and the ids it finds are stamped back onto the very
+// events the caller is about to print. The returned list is narrowed to the
+// incidents the inspected event takes part in: the window is the evidence, the
+// event is the subject.
+func Correlate(c Context) (Context, []correlation.Incident) {
+	before := len(c.Before)
+	evs := make([]event.Event, 0, before+1+len(c.After))
+	evs = append(evs, c.Before...)
+	evs = append(evs, c.Event)
+	evs = append(evs, c.After...)
+
+	incs := correlation.Run(evs, correlation.Options{})
+	correlation.ApplyIDs(evs, incs)
+	c.Before, c.Event, c.After = evs[:before], evs[before], evs[before+1:]
+	return c, correlation.For(c.Event, incs)
+}
 
 // Two windowed queries around the event, not a causality analysis: the result
 // says what the journal recorded before and after, never why (PRD 8.3).

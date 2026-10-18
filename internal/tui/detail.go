@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/RakhaYandra/hibiki/internal/correlation"
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/inspect"
 )
@@ -16,6 +17,7 @@ import (
 type detailState struct {
 	ev      event.Event
 	ctx     *inspect.Context
+	incs    []correlation.Incident
 	offset  int
 	loading bool
 	err     error
@@ -53,14 +55,17 @@ func (m *Model) openDetail() tea.Cmd {
 	}
 }
 
+// The correlation runs once per loaded context: the frame path only reads the
+// incidents it already has.
 func (m *Model) applyDetailDone(msg detailDoneMsg) {
 	if m.detail == nil || msg.token != m.detail.token {
 		return
 	}
 	m.detail.loading = false
 	m.detail.err = msg.err
-	out := msg.ctx
+	out, incs := inspect.Correlate(msg.ctx)
 	m.detail.ctx = &out
+	m.detail.incs = incs
 }
 
 func (m *Model) closeDetail() {
@@ -153,8 +158,9 @@ func (m Model) detailLines() []string {
 		source += "   boot " + *ev.Source.BootID
 	}
 	lines = append(lines, source)
-	if len(ev.CorrelationIDs) > 0 {
-		lines = append(lines, "correlation "+strings.Join(ev.CorrelationIDs, ", "))
+	for _, inc := range d.incs {
+		lines = append(lines, fmt.Sprintf("correlation %s %s [%s]", inc.ID, inc.Rule, inc.Confidence))
+		lines = append(lines, "  "+oneLine(inc.Reason))
 	}
 
 	lines = append(lines, fmt.Sprintf("fields (%d)", len(ev.Raw)))

@@ -3,7 +3,9 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/event"
 	"github.com/RakhaYandra/hibiki/internal/session"
 	"github.com/RakhaYandra/hibiki/internal/source"
+	"github.com/RakhaYandra/hibiki/internal/source/journal"
 	"github.com/RakhaYandra/hibiki/internal/timeline"
 )
 
@@ -20,6 +23,68 @@ func neighbourhood() []event.Event {
 	before := testEvent(at(-5*time.Minute-time.Second), "evt_before", event.CategoryService, event.SeverityInfo)
 	after := testEvent(at(-5*time.Minute+time.Second), "evt_after", event.CategoryApplication, event.SeverityError)
 	return []event.Event{before, main, after}
+}
+
+// The crash-loop fixture is read through the journal adapter so inspect sees
+// the same events the CLI reads from a journal, not a hand-built copy.
+func crashLoopEvents(t *testing.T) []event.Event {
+	t.Helper()
+	f, err := os.Open(filepath.Join("..", "..", "test", "fixtures", "regression", "crash-loop.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	evs := []event.Event{}
+	if err := journal.Decode(f, func(fields map[string]string) error {
+		ev, err := journal.Normalize(fields)
+		if err != nil {
+			return err
+		}
+		evs = append(evs, ev)
+		return nil
+	}, func(line int, err error) {
+		t.Errorf("fixture line %d: %v", line, err)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 6 {
+		t.Fatalf("fixture events = %d, want the six of crash-loop.jsonl", len(evs))
+	}
+	return evs
+}
+
+func crashLoopInspect(t *testing.T, cursor, format string) cliResult {
+	t.Helper()
+	evs := crashLoopEvents(t)
+	target := event.Event{}
+	for _, ev := range evs {
+		if ev.Source.Cursor != nil && *ev.Source.Cursor == cursor {
+			target = ev
+		}
+	}
+	if target.ID == "" {
+		t.Fatalf("the fixture has no event at cursor %s", cursor)
+	}
+	path := saveEnvelope(t, timeline.Result{Events: evs})
+	args := []string{"inspect", target.ID, "--file", path, "--context", "2m"}
+	if format != "" {
+		args = append(args, "--format", format)
+	}
+	res := runCLI(t, cliDeps{sources: []source.Source{&recordingSource{name: "test", evs: evs}}, now: testNow}, args...)
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	return res
+}
+
+// The field block pads its name column, so the value is what is left of the line.
+func fieldValue(out, name string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if rest, ok := strings.CutPrefix(line, "  "+name+" "); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
 }
 
 func saveEnvelope(t *testing.T, res timeline.Result) string {
@@ -132,6 +197,131 @@ func TestInspectJSONFormatIsAnObject(t *testing.T) {
 	}
 	if view.Limitations == nil {
 		t.Error("limitations must be a list, never null")
+	}
+}
+
+func TestInspectShowsTheIncidentsOfTheEvent(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=3", "")
+	for _, want := range []string{"Correlations (3)", "restart-loop [high]", "failed-then-error [medium]", "pid-errors [low]"} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("inspect output lost %q:\n%s", want, res.stdout)
+		}
+	}
+	if strings.Contains(res.stdout, "v0.3.0") {
+		t.Errorf("the v0.3.0 placeholder is gone:\n%s", res.stdout)
+	}
+	ids := fieldValue(res.stdout, "correlation")
+	if !strings.Contains(ids, "inc_") {
+		t.Errorf("correlation = %q, want the incident ids the event belongs to:\n%s", ids, res.stdout)
+	}
+	after := strings.Index(res.stdout, "\nAfter")
+	correlations := strings.Index(res.stdout, "\nCorrelations")
+	sources := strings.Index(res.stdout, "\nSources")
+	if after < 0 || correlations < after || sources < correlations {
+		t.Errorf("section order wrong: after = %d, correlations = %d, sources = %d:\n%s", after, correlations, sources, res.stdout)
+	}
+}
+
+func TestInspectWithoutAMatchingRulePrintsNone(t *testing.T) {
+	src := &recordingSource{name: "test", evs: neighbourhood()}
+	path := saveEnvelope(t, timeline.Result{Events: neighbourhood()})
+	res := runCLI(t, cliDeps{sources: []source.Source{src}, now: testNow},
+		"inspect", "evt_main", "--file", path, "--context", "2m")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	if got := fieldValue(res.stdout, "correlation"); got != "none" {
+		t.Errorf("correlation = %q, want none:\n%s", got, res.stdout)
+	}
+	if strings.Contains(res.stdout, "Correlations") {
+		t.Errorf("a section with no incident must not be printed:\n%s", res.stdout)
+	}
+}
+
+func TestInspectJSONCarriesTheIncidentsOfTheEvent(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=3", "json")
+	type neighbour struct {
+		ID             string   `json:"id"`
+		CorrelationIDs []string `json:"correlation_ids"`
+	}
+	var view struct {
+		Event struct {
+			ID             string   `json:"id"`
+			CorrelationIDs []string `json:"correlation_ids"`
+		} `json:"event"`
+		Before       []neighbour `json:"before"`
+		After        []neighbour `json:"after"`
+		Correlations []struct {
+			ID         string      `json:"id"`
+			Rule       string      `json:"rule"`
+			Confidence string      `json:"confidence"`
+			Reason     string      `json:"reason"`
+			Primary    neighbour   `json:"primary"`
+			Related    []neighbour `json:"related"`
+		} `json:"correlations"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &view); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, res.stdout)
+	}
+	if len(view.Correlations) != 3 {
+		t.Fatalf("correlations = %d, want the three the crash-loop fixture fires:\n%s", len(view.Correlations), res.stdout)
+	}
+	for _, inc := range view.Correlations {
+		if inc.Rule != "restart-loop" && inc.Rule != "failed-then-error" && inc.Rule != "pid-errors" {
+			t.Errorf("unexpected rule %q:\n%s", inc.Rule, res.stdout)
+		}
+		if inc.ID == "" || inc.Reason == "" || inc.Confidence == "" {
+			t.Errorf("incident %+v lost its identity, its reason or its confidence", inc)
+		}
+	}
+	if len(view.Event.CorrelationIDs) != 3 {
+		t.Errorf("event.correlation_ids = %v, want one per incident:\n%s", view.Event.CorrelationIDs, res.stdout)
+	}
+
+	stamped := map[string][]string{}
+	for _, ev := range append(append([]neighbour{}, view.Before...), view.After...) {
+		stamped[ev.ID] = ev.CorrelationIDs
+	}
+	for _, inc := range view.Correlations {
+		evidence := append([]neighbour{inc.Primary}, inc.Related...)
+		for _, ev := range evidence {
+			ids, neighbour := stamped[ev.ID]
+			if !neighbour {
+				continue
+			}
+			if !slices.Contains(ids, inc.ID) {
+				t.Errorf("neighbour %s lost incident %s, got %v:\n%s", ev.ID, inc.ID, ids, res.stdout)
+			}
+		}
+	}
+}
+
+func TestInspectJSONAlwaysCarriesAnIncidentsArray(t *testing.T) {
+	src := &recordingSource{name: "test", evs: neighbourhood()}
+	path := saveEnvelope(t, timeline.Result{Events: neighbourhood()})
+	res := runCLI(t, cliDeps{sources: []source.Source{src}, now: testNow},
+		"inspect", "evt_main", "--file", path, "--format", "json")
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	var view struct {
+		Correlations []any `json:"correlations"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &view); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, res.stdout)
+	}
+	if view.Correlations == nil {
+		t.Error("correlations must be an array, never null")
+	}
+}
+
+func TestInspectTextNeverAssertsCausality(t *testing.T) {
+	res := crashLoopInspect(t, "s=cl;i=3", "")
+	lowered := strings.ToLower(res.stdout)
+	for _, banned := range []string{"because", "caused by", "—"} {
+		if strings.Contains(lowered, banned) {
+			t.Errorf("rendered output must not assert causality (%q):\n%s", banned, res.stdout)
+		}
 	}
 }
 
