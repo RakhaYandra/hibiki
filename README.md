@@ -41,6 +41,10 @@ hibiki
 └── version
 ```
 
+Every sample below was produced with
+`HIBIKI_JOURNAL_FILE=test/fixtures/regression/crash-loop.jsonl` set, so the
+output shown is the fixture in this repository and not a real journal.
+
 ### timeline
 
 ```bash
@@ -430,10 +434,10 @@ Layout and invariants: [docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
-- v0.3.0 (shipped): correlation engine with rule ids, evidence, and explicit
-  confidence.
+- v0.3.0: correlation engine with rule ids, evidence, and explicit confidence.
 - Later: more adapters, journal sizes above 2 GB, Debian and Fedora permission
   matrices.
 
-Status: v0.3.0. The journal adapter, event model, timeline engine, correlation
-engine, CLI, and TUI are in scope.
+Status: the journal adapter, event model, timeline engine, correlation engine,
+CLI, and TUI are all in scope and in the tree. A binary's version comes from the
+newest tag, so a build from `main` names the last tag plus the commits after it.

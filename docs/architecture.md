@@ -52,14 +52,19 @@ the TUI detail pane call it over the window around one event.
 
 `internal/tui` is a client of the engine, not a second implementation of it: it
 builds a `timeline.Filter`, runs `timeline.Run` in a command goroutine, and
-renders the `timeline.Result` the same CLI commands would get. The dependency
-points one way.
+renders the `timeline.Result` the same CLI commands would get. The detail pane
+reaches for `internal/inspect` and `internal/correlation`, the same two packages
+the CLI uses, and neither of them imports the TUI.
 
 ```
 internal/cli --> internal/tui --> internal/timeline
                     |                  ^
-                    +-> internal/inspect
+                    +-> internal/inspect --> internal/correlation
 ```
+
+The detail pane calls `inspect.Correlate` once per context it loads and keeps
+the incidents with it, so the correlation runs off the frame path and the frame
+path only reads rows it already has.
 
 The rule this layout exists to protect: the core never imports Charm. Bubbletea,
 lipgloss, bubbles and x/ansi live only inside `internal/tui`, so a query on the
@@ -110,11 +115,15 @@ every exit code (including 130 for an interrupt) is decided in `internal/cli`.
   compared, so an event that has no monotonic value can still be matched, and
   the window never shifts under a clock change.
 - Hibiki reports order and evidence. It never states that one event caused
-  another, and no reason string a rule can emit does either: every one is a count
-  of events inside a window.
-- One cluster yields one incident. Every rule either resumes after the run it
-  emitted or records a suppression deadline at the primary, so the same events
-  are never the evidence of two incidents of the same rule.
+  another, and no reason string a rule can emit does either: each says only what
+  was seen inside the window, either a count of events or the two unit names and
+  which one came first.
+- `restart-loop`, `pid-errors` and `failed-then-error` yield one incident per
+  cluster of a unit: each resumes after the run it emitted, or records a
+  suppression deadline at the primary. `dependency-error` fans out instead, one
+  incident per other unit over the same primary, so one event can be the primary
+  of several incidents of that rule: 405 of the 10,000 events of the performance
+  fixture are evidence in more than one of them.
 - A failure to read one source degrades the answer instead of hiding it: the
   event list may still be useful, and the envelope says which source was missing.
 - The core never imports Charm: bubbletea and its companions stay inside

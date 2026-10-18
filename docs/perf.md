@@ -17,7 +17,6 @@ extrapolated.
 | Memory, 10k events  | under 100 MB                          | 82 MB peak RSS, `--format json`           |
 | Cancellation        | the process stops after cancellation  | under 2 s after SIGINT, covered by tests  |
 | TUI navigation      | input response under 100 ms, loaded   | 36 us per frame at 10,000 events, p95 asserted |
-| Correlation pass    | under 500 ms over 10,000 events      | 14.9 ms for 4,520 incidents, 97 ms under `-race` |
 | Pagination          | the whole journal is never loaded     | see the cursor section below              |
 
 The memory figure is the peak RSS of the `hibiki` process, taken from
@@ -26,6 +25,14 @@ The memory figure is the peak RSS of the `hibiki` process, taken from
 garbage collector, so a run can land anywhere between roughly 76 MB and 90 MB
 depending on when the collector fires; the streaming writer below is what keeps
 it in that band instead of 270 MB.
+
+Those six rows are the PRD 14 budgets. Correlation is not one of them: the
+500 ms below is a constant in `internal/correlation/perf_test.go`, and
+`TestRunWithinBudget` fails when a run passes it.
+
+| Metric                  | Target                         | Measured                                  |
+| ----------------------- | ------------------------------ | ----------------------------------------- |
+| Correlation, 10k events | under 500 ms, engine constant | 14.9 ms for 4,520 incidents, 97 ms under `-race` |
 
 ## Benchmarks
 
@@ -83,13 +90,14 @@ go test ./internal/correlation/ -run TestRunWithinBudget -v
 | `BenchmarkRun10k`              | 14,734,190 | 32,695,180 | 64,264    |
 | `BenchmarkRun10k` with `-race` | 97,348,469 | 33,221,676 | 70,036    |
 
-`TestRunWithinBudget` builds the same 10,000 synthetic events over 200 units and
-40 time slots, refuses to time a run in which any of the four rules stayed
-silent, and then times one full `Run`: 4,520 incidents in 14.9 ms against the
-500 ms budget. The `-race` figure of 97 ms leaves roughly 5x headroom on this
-16 thread runner. The fixture is deliberately the expensive shape: 3,920 of its
-4,520 incidents come from `dependency-error` alone, and the other three rules
-contribute 200 each.
+`TestRunWithinBudget` builds the same 10,000 synthetic events: 200 units, 50
+events each, 40 units to a boot and every unit on its own 2 second offset. It
+refuses to time a run in which any of the four rules stayed silent, and then
+times one full `Run`: 4,520 incidents in 14.9 ms against the 500 ms constant.
+The `-race` figure of 97 ms leaves roughly 5x headroom on this 16 thread runner.
+The fixture is deliberately the expensive shape: 3,920 of its 4,520 incidents
+come from `dependency-error` alone, and the other three rules contribute 200
+each.
 
 The real journal tells the other side of that number. `hibiki incidents --since
 7d --limit 10000 --format json` returned 10,000 events and 1 incident, a
@@ -134,12 +142,13 @@ never loaded to continue a query: the next page starts from that key.
 
 Correlation holds both sides of that answer at once: the events, and the
 incident list that groups them. Measured on 2026-10-18,
-`hibiki incidents --since 24h --limit 0 --format json` returned 113,243 events
-and 5 incidents in 6.6 s at 737 MB to 820 MB peak RSS, where the same window
-through `timeline` alone cost 699 MB to 795 MB. That day's 24 hour window held
-more events than the 96,399 above, measured two days earlier, which is why both
-figures moved up; the range inside each pair is the collector, over four runs in
-fresh processes.
+`hibiki timeline --since 24h --limit 0 --format json` returned 113,243 events in
+7.7 s, and `hibiki incidents --since 24h --limit 0 --format json` read the same
+window and reported 5 incidents in 6.5 s, both at roughly 700 MB to 870 MB peak
+RSS across runs. That day's 24 hour window held more events than the 96,399
+measured on 2026-10-16, which is why both figures moved up, and the two commands
+land inside the same band, so the incident list is not what decides the peak:
+the collector is.
 
 ## Reproducing
 

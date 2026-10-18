@@ -113,6 +113,47 @@ warning: showing the first 200 events; continue with --cursor eyJ0IjoxNzky...
 For the newest events, narrow the window: `--since 5m` is usually what you want
 instead of `--since 24h --limit 200`.
 
+## `incidents` found nothing
+
+`incidents` answers with the two empty results the timeline also has, and keeps
+them apart the same way:
+
+```
+Incidents (0)
+
+No incidents found.
+covered: 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:28:41.28172Z
+```
+
+A `covered:` range means events were read and no rule fired.
+`covered: nothing observed` means no event came back at all, so no rule ran over
+anything. Both are exit 0: an empty result is a successful query.
+
+Check, in this order:
+
+1. Is the window wide enough for the rule? `restart-loop` looks 5 minutes ahead of
+   each event, so three failures spread over ten minutes never meet.
+2. Is `--limit` cutting the input? Correlation runs on the result of the query, so
+   the default 200 events is all the rules see. `--limit 1000` widens it.
+3. Does the window carry the fields a rule needs? `pid-errors` needs a
+   `Process.PID`, and `dependency-error` needs a unit on both of the events it
+   looks at.
+
+The exit codes are the table at the end of this file. `incidents` returns 2 for a
+bad flag value, 3 when the journal cannot be read, 4 when nothing in a
+`HIBIKI_JOURNAL_FILE` export decoded, and 0 for every answer above.
+
+## `hibiki: --window must not be negative` (exit 2)
+
+`--window` overrides the four default rule windows at once. `0`, the default,
+keeps the per-rule defaults; a negative value is refused instead of running a
+query that would group nothing.
+
+```bash
+hibiki incidents --since 24h --window 30s   # all four rules look 30 seconds
+hibiki incidents --since 24h --window 30m   # a restart loop needs the room
+```
+
 ## `inspect` says there is no previous query
 
 `inspect` reads the snapshot Hibiki wrote after the last `timeline` or `events`
@@ -172,7 +213,7 @@ the snapshot, so `hibiki inspect` keeps working across an interrupt.
 | ---- | ------------------------------------------ | -------------------------------------- |
 | 0    | The query succeeded                         | Including an empty result              |
 | 1    | Internal or operational error               | An unreadable snapshot, a write failure |
-| 2    | Invalid argument or configuration           | `--severity bogus`, `--pid 0`, bad `--since` |
+| 2    | Invalid argument or configuration           | `--severity bogus`, `--pid 0`, bad `--since`, negative `--window` |
 | 3    | An essential source is unavailable          | Permission denied, journalctl missing  |
 | 4    | Invalid data                                | Nothing in the file decoded, damaged snapshot |
 | 130  | Interrupted in the TUI                       | Ctrl+C or SIGINT, terminal restored            |

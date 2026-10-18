@@ -47,11 +47,13 @@ A value that is unavailable is `null`, never an empty string.
 
 `correlation_ids` holds the ids of the incidents that reference this event,
 either as the primary or among the related ones. In a document, only `incidents`
-and `inspect` populate it: inside an incident, on the events the incident
-carries, and on the event `inspect` was asked about. The `timeline` and `events`
-envelopes leave it empty, and so does every document that never correlated. An
-empty `correlation_ids` means "nothing references this event", which is
-different from a field nobody could read.
+and `inspect` populate it. `incidents` stamps the events each incident carries.
+`inspect` stamps every event of the window it correlated, the ones in `before`
+and `after` included, so an event there can carry the ids of incidents the
+inspected event takes no part in. The `timeline` and `events` envelopes leave the
+field empty, and so does every document that never correlated. An empty
+`correlation_ids` means "nothing references this event", which is different from
+a field nobody could read.
 
 ### Implementation notes
 
