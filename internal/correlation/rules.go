@@ -127,9 +127,8 @@ func matchPIDErrors(events []event.Event, window time.Duration) []Incident {
 	return incs
 }
 
-// The reason names one other unit, so every other unit contributes its own
-// incident instead of joining the others into one sentence that would name
-// only one of them (ADR-007 wording).
+// The reason template names one other unit, so a second other unit cannot join
+// the first one's incident without leaving its own errors unnamed (ADR-007).
 func matchDependencyError(events []event.Event, window time.Duration) []Incident {
 	limit := window.Microseconds()
 	incs := []Incident{}
@@ -143,14 +142,15 @@ func matchDependencyError(events []event.Event, window time.Duration) []Incident
 			units = append(units, unit)
 		}
 		sort.Strings(units)
-		var covered int64
+		covered := make(map[string]int64)
 		for _, ev := range group {
-			if ev.Category != event.CategoryService || ev.TimestampUnixUS <= covered {
+			unit := *ev.Service.Unit
+			if ev.Category != event.CategoryService || ev.TimestampUnixUS <= covered[unit] {
 				continue
 			}
 			matched := false
 			for _, other := range units {
-				if other == *ev.Service.Unit {
+				if other == unit {
 					continue
 				}
 				var related []event.Event
@@ -164,12 +164,12 @@ func matchDependencyError(events []event.Event, window time.Duration) []Incident
 				if len(related) == 0 {
 					continue
 				}
-				reason := fmt.Sprintf("%s error before %s failed, within %s", other, *ev.Service.Unit, formatWindow(window))
+				reason := fmt.Sprintf("%s error before %s failed, within %s", other, unit, formatWindow(window))
 				incs = append(incs, backwardIncident(ev, related, reason, window))
 				matched = true
 			}
 			if matched {
-				covered = ev.TimestampUnixUS
+				covered[unit] = ev.TimestampUnixUS + limit
 			}
 		}
 	}

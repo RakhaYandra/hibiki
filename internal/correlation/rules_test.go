@@ -1,8 +1,8 @@
 package correlation
 
 import (
+	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -106,6 +106,16 @@ func TestRun_BootGuard(t *testing.T) {
 	})
 }
 
+func incidentIDs(incs []Incident, rule string) []string {
+	ids := []string{}
+	for _, inc := range incs {
+		if inc.Rule == rule {
+			ids = append(ids, inc.ID)
+		}
+	}
+	return ids
+}
+
 func withPID(ev event.Event, pid int) event.Event {
 	ev.Process.PID = &pid
 	return ev
@@ -153,6 +163,71 @@ func crashLoopEvents() []event.Event {
 		out = append(out, withMono(ev, rec.monotonic))
 	}
 	return out
+}
+
+// Every group yields two dependency-error incidents over one primary, so the
+// incidents tie on timestamp, rule and primary id and only the id separates
+// them (ADR-007 determinism contract).
+func tiedIncidentEvents() []event.Event {
+	events := []event.Event{}
+	for g := 0; g < 12; g++ {
+		boot := fmt.Sprintf("boot-%02d", g)
+		base := baseUS + int64(g)*1_000_000
+		tag := fmt.Sprintf("%02d", g)
+		pid := 100 + g
+		events = append(events,
+			withBoot(testEvent("d"+tag+"-a", base, event.CategoryApplication, event.SeverityError, "db.service"), boot),
+			withBoot(testEvent("d"+tag+"-b", base+1_000, event.CategoryApplication, event.SeverityError, "cache.service"), boot),
+			withBoot(testEvent("f"+tag, base+2_000, event.CategoryService, event.SeverityError, "api.service"), boot),
+			withBoot(withPID(testEvent("p"+tag+"-1", base+3_000, event.CategoryApplication, event.SeverityError, "worker.service"), pid), boot),
+			withBoot(withPID(testEvent("p"+tag+"-2", base+4_000, event.CategoryApplication, event.SeverityError, "helper.service"), pid), boot),
+		)
+	}
+	return events
+}
+
+func TestRun_DeterministicAcrossNewRules(t *testing.T) {
+	ordered := tiedIncidentEvents()
+	shuffled := []event.Event{}
+	for i := len(ordered) - 1; i >= 0; i-- {
+		shuffled = append(shuffled, ordered[i])
+	}
+	wantOrdered := append([]event.Event(nil), ordered...)
+	wantShuffled := append([]event.Event(nil), shuffled...)
+
+	gotOrdered := Run(ordered, Options{})
+	if n := len(incidentIDs(gotOrdered, "dependency-error")); n != 24 {
+		t.Fatalf("fixture produced %d dependency-error incidents, want 24", n)
+	}
+	if n := len(incidentIDs(gotOrdered, "pid-errors")); n != 12 {
+		t.Fatalf("fixture produced %d pid-errors incidents, want 12", n)
+	}
+
+	gotShuffled := Run(shuffled, Options{})
+	if !reflect.DeepEqual(gotShuffled, gotOrdered) {
+		t.Errorf("shuffled input produced a different result than sorted input")
+	}
+	for i := 0; i < 300; i++ {
+		if again := Run(ordered, Options{}); !reflect.DeepEqual(again, gotOrdered) {
+			t.Fatalf("run %d produced a different incident order", i)
+		}
+	}
+	if !reflect.DeepEqual(ordered, wantOrdered) {
+		t.Errorf("Run mutated its input slice")
+	}
+	if !reflect.DeepEqual(shuffled, wantShuffled) {
+		t.Errorf("Run mutated its input slice")
+	}
+
+	for i := 1; i < len(gotOrdered); i++ {
+		prev, cur := gotOrdered[i-1], gotOrdered[i]
+		if cur.Primary.TimestampUnixUS == prev.Primary.TimestampUnixUS &&
+			cur.Rule == prev.Rule &&
+			cur.Primary.ID == prev.Primary.ID &&
+			cur.ID <= prev.ID {
+			t.Errorf("incidents %d and %d tie on timestamp, rule and primary id but are not in id order: %s then %s", i-1, i, prev.ID, cur.ID)
+		}
+	}
 }
 
 func TestRun_PIDErrors(t *testing.T) {
@@ -342,24 +417,28 @@ func TestRun_DependencyError(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("Run() returned %d incidents, want 2", len(got))
 		}
-		gotReasons := []string{got[0].Reason, got[1].Reason}
-		sort.Strings(gotReasons)
+		wantIDs := []string{"inc_0cd20a9379da", "inc_d2f94ededacf"}
 		wantReasons := []string{
 			"cache.service error before api.service failed, within 30s",
 			"db.service error before api.service failed, within 30s",
 		}
-		if !reflect.DeepEqual(gotReasons, wantReasons) {
-			t.Errorf("Reasons = %v, want %v", gotReasons, wantReasons)
-		}
-		gotIDs := []string{got[0].ID, got[1].ID}
-		sort.Strings(gotIDs)
-		wantIDs := []string{"inc_0cd20a9379da", "inc_d2f94ededacf"}
-		if !reflect.DeepEqual(gotIDs, wantIDs) {
-			t.Errorf("IDs = %v, want %v", gotIDs, wantIDs)
-		}
-		for _, inc := range got {
+		wantStart := time.UnixMicro(baseUS - 30_000_000).UTC()
+		wantEnd := time.UnixMicro(baseUS).UTC()
+		for i, inc := range got {
+			if inc.ID != wantIDs[i] {
+				t.Errorf("incident %d ID = %q, want %q", i, inc.ID, wantIDs[i])
+			}
+			if inc.Reason != wantReasons[i] {
+				t.Errorf("incident %d Reason = %q, want %q", i, inc.Reason, wantReasons[i])
+			}
 			if inc.Primary.ID != "f1" {
-				t.Errorf("Primary.ID = %q, want %q", inc.Primary.ID, "f1")
+				t.Errorf("incident %d Primary.ID = %q, want %q", i, inc.Primary.ID, "f1")
+			}
+			if !inc.WindowStart.Equal(wantStart) {
+				t.Errorf("incident %d WindowStart = %v, want %v", i, inc.WindowStart, wantStart)
+			}
+			if !inc.WindowEnd.Equal(wantEnd) {
+				t.Errorf("incident %d WindowEnd = %v, want %v", i, inc.WindowEnd, wantEnd)
 			}
 		}
 	})
@@ -381,6 +460,63 @@ func TestRun_DependencyError(t *testing.T) {
 		}
 		if got := Run(events, Options{}); len(got) != 0 {
 			t.Errorf("Run() returned %d incidents, want 0", len(got))
+		}
+	})
+
+	t.Run("a same timestamp failure of another unit is still a primary", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("d1", baseUS-10_000_000, event.CategoryApplication, event.SeverityError, "db.service"),
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("f2", baseUS, event.CategoryService, event.SeverityError, "web.service"),
+		}
+		got := Run(events, Options{})
+		if len(got) != 2 {
+			t.Fatalf("Run() returned %d incidents, want 2: %+v", len(got), got)
+		}
+		want := []struct {
+			id      string
+			reason  string
+			primary string
+		}{
+			{"inc_d2f94ededacf", "db.service error before api.service failed, within 30s", "f1"},
+			{"inc_7007d70129f3", "db.service error before web.service failed, within 30s", "f2"},
+		}
+		for i, w := range want {
+			if got[i].ID != w.id {
+				t.Errorf("incident %d ID = %q, want %q", i, got[i].ID, w.id)
+			}
+			if got[i].Reason != w.reason {
+				t.Errorf("incident %d Reason = %q, want %q", i, got[i].Reason, w.reason)
+			}
+			if got[i].Primary.ID != w.primary {
+				t.Errorf("incident %d Primary.ID = %q, want %q", i, got[i].Primary.ID, w.primary)
+			}
+			if len(got[i].Related) != 1 || got[i].Related[0].ID != "d1" {
+				t.Errorf("incident %d Related = %+v, want single event d1", i, got[i].Related)
+			}
+		}
+	})
+
+	t.Run("only the earliest failure of one unit inside one window is a primary", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("d1", baseUS-20_000_000, event.CategoryApplication, event.SeverityError, "db.service"),
+			testEvent("d2", baseUS-15_000_000, event.CategoryApplication, event.SeverityError, "cache.service"),
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("f2", baseUS+10_000_000, event.CategoryService, event.SeverityError, "api.service"),
+		}
+		got := Run(events, Options{})
+		wantIDs := []string{"inc_0cd20a9379da", "inc_d2f94ededacf"}
+		gotIDs := incidentIDs(got, "dependency-error")
+		if !reflect.DeepEqual(gotIDs, wantIDs) {
+			t.Errorf("dependency-error ids in order = %v, want %v", gotIDs, wantIDs)
+		}
+		for _, inc := range got {
+			if inc.Rule != "dependency-error" {
+				continue
+			}
+			if inc.Primary.ID != "f1" {
+				t.Errorf("Primary.ID = %q, want %q (f2 must not become a primary)", inc.Primary.ID, "f1")
+			}
 		}
 	})
 
@@ -489,11 +625,11 @@ func TestRun_NoCrossBootMatches(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("Run() returned %d incidents, want 2", len(got))
 		}
-		gotRules := []string{got[0].Rule, got[1].Rule}
-		sort.Strings(gotRules)
 		wantRules := []string{"failed-then-error", "pid-errors"}
-		if !reflect.DeepEqual(gotRules, wantRules) {
-			t.Errorf("Rules = %v, want %v", gotRules, wantRules)
+		for i, inc := range got {
+			if inc.Rule != wantRules[i] {
+				t.Errorf("incident %d Rule = %q, want %q", i, inc.Rule, wantRules[i])
+			}
 		}
 	})
 }

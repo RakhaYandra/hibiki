@@ -68,7 +68,10 @@ func Run(events []event.Event, opts Options) []Incident {
 		if incs[i].Rule != incs[j].Rule {
 			return incs[i].Rule < incs[j].Rule
 		}
-		return incs[i].Primary.ID < incs[j].Primary.ID
+		if incs[i].Primary.ID != incs[j].Primary.ID {
+			return incs[i].Primary.ID < incs[j].Primary.ID
+		}
+		return incs[i].ID < incs[j].ID
 	})
 	stamp(incs)
 	return incs
