@@ -39,13 +39,19 @@ coverage, because nothing was observed.
 | `message`                | string           | Human readable message, verbatim from the source              |
 | `service`                | object           | `unit`, `active_state`, `sub_state`, `result`                 |
 | `process`                | object           | `pid`, `comm`, `executable`                                   |
-| `correlation_ids`        | array            | Always empty in v0.1.0; the correlation engine is v0.3.0      |
+| `correlation_ids`        | array            | Ids of the incidents that reference this event; see below     |
 | `raw`                    | object           | Every source field, verbatim                                  |
 | `limitations`            | array            | Event level limitations, see below                            |
 
-A value that is unavailable is `null`, never an empty string. An empty
-`correlation_ids` means "nothing references this event", which is different from
-a field nobody could read.
+A value that is unavailable is `null`, never an empty string.
+
+`correlation_ids` holds the ids of the incidents that reference this event,
+either as the primary or among the related ones. In a document, only `incidents`
+and `inspect` populate it: inside an incident, on the events the incident
+carries, and on the event `inspect` was asked about. The `timeline` and `events`
+envelopes leave it empty, and so does every document that never correlated. An
+empty `correlation_ids` means "nothing references this event", which is
+different from a field nobody could read.
 
 ### Implementation notes
 
@@ -128,4 +134,6 @@ A damaged line makes the query keep the records that did decode and report
 ```
 
 The message above is a record shape from a real machine but the fixture it comes
-from is handmade; no real journal content is published with this repository.
+from is handmade; no real journal content is published with this repository. The
+`correlation_ids` of that event is empty, as it is in every `timeline` and
+`events` envelope; the ids appear in `incidents` and `inspect` output only.

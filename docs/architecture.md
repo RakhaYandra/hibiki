@@ -13,6 +13,7 @@ internal/source/journal             adapter, JSON Lines decode, normalization
     v
 internal/timeline                   k-way merge heap, filters, limit, cursor
     |  timeline.Result: events, coverage, sources, limitations
+    +--> internal/correlation        named rules, windows, confidence, evidence
     +--> internal/output            text or a JSON envelope
     +--> internal/session           last.json snapshot (0600) for inspect
 ```
@@ -20,6 +21,13 @@ internal/timeline                   k-way merge heap, filters, limit, cursor
 `inspect` reads the snapshot instead of querying again, so the event the user
 picked is the event they inspected, even if the journal rotated in between. It
 then runs two extra windowed queries to collect the events before and after.
+
+`internal/correlation` sits between the merge and the presentation: it takes the
+`timeline.Result` a query already produced, never a source of its own, so
+correlating adds a pass over events that were already read and filtered.
+`timeline` and `events` do not call it, which is why their envelopes carry no
+`correlation_ids`; `incidents` calls it over the whole result, and `inspect` and
+the TUI detail pane call it over the window around one event.
 
 ## Packages
 
@@ -32,6 +40,7 @@ then runs two extra windowed queries to collect the events before and after.
 | `internal/source/journal`   | The systemd journal adapter: process handling, JSON Lines decode, normalization              |
 | `internal/source/systemd`   | Current unit state through `systemctl show`, used only for the "unit not found" warning      |
 | `internal/timeline`         | Merge, filter, ordering, limit, opaque cursor                                                |
+| `internal/correlation`      | The four correlation rules, their windows, confidence and evidence                           |
 | `internal/output`           | Text and JSON renderers, the envelope type                                                   |
 | `internal/inspect`          | The window around one event: before, after, sources, limitations                             |
 | `internal/session`          | Saving and loading the last query as a restricted file                                       |
@@ -90,8 +99,22 @@ every exit code (including 130 for an interrupt) is decided in `internal/cli`.
   for. Unknown fields are never dropped.
 - A limit truncates the display of a result, never the analysis silently: a
   truncated result is flagged, and a cursor says how to continue.
+- Correlation never mutates its input. `correlation.Run` sorts a copy of the
+  events it was handed, and the only `correlation_ids` it writes are on the
+  events inside the incidents it returns.
+- The `timeline` and `events` envelopes keep `correlation_ids` empty, because
+  neither command correlates. `incidents` correlates the result of a query, and
+  `inspect` and the TUI detail pane correlate the window around one event, so a
+  query that asked for events alone gets events alone.
+- Correlation windows compare realtime only. `timestamp_monotonic_us` is never
+  compared, so an event that has no monotonic value can still be matched, and
+  the window never shifts under a clock change.
 - Hibiki reports order and evidence. It never states that one event caused
-  another; the correlation engine that will have to justify a claim is v0.3.0.
+  another, and no reason string a rule can emit does either: every one is a count
+  of events inside a window.
+- One cluster yields one incident. Every rule either resumes after the run it
+  emitted or records a suppression deadline at the primary, so the same events
+  are never the evidence of two incidents of the same rule.
 - A failure to read one source degrades the answer instead of hiding it: the
   event list may still be useful, and the envelope says which source was missing.
 - The core never imports Charm: bubbletea and its companions stay inside

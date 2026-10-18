@@ -34,6 +34,7 @@ hibiki
 ├── timeline    chronological view of a window
 ├── events      the same events, with the same filters
 ├── inspect     one event, its surroundings and its raw fields
+├── incidents   the same events grouped by named correlation rules
 ├── sources     what can be read here, and how far back
 ├── doctor      six read-only checks and what to do about failures
 ├── tui         the same timeline, interactive
@@ -93,51 +94,175 @@ hibiki inspect evt_7bfa3ff5c762 --file /tmp/saved.json
 `inspect` shows the normalized event, every raw journal field, and the events
 within `--context` before and after it. The event comes from the snapshot of the
 last query, so an id printed by a query can still be inspected minutes later, or
-from a file written with `--save`.
+from a file written with `--save`. When a correlation rule groups this event with
+others, the `correlation` line names the incidents and the `Correlations` section
+lists them with the window each rule looked at.
 
 ```
-Event evt_bb5b9f9dbc12
-  time         2026-10-16T10:20:02.253815Z
+Event evt_7bfa3ff5c762
+  time         2026-10-16T09:28:40.27772Z
   time_basis   realtime
-  monotonic_us 8029601093
+  monotonic_us 4936375957000
   category     service
-  severity     info
+  severity     error
   source_type  systemd-journal
   host         host
   boot_id      30107f27-d01e-4e42-b248-46e4da81db1a
-  cursor       s=e49096f9...;i=1392b0;b=30107f27...;m=1de99fd45;t=65df281d997f7
-  unit         -
-  pid          1205
+  cursor       s=cl;i=3
+  unit         omarchy-speaker-loudness.service
+  pid          1
   comm         systemd
-  executable   /usr/lib/systemd/systemd
-  message      omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3557.
-  correlation  none (correlation arrives in v0.3.0)
+  message      omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+  correlation  inc_171ce20e78a2, inc_5a685bcf67f9, inc_775419612656
 
 Raw journal fields
-  MESSAGE                omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3557.
-  MESSAGE_ID             5eb03494b6584870a536b337290809b3
-  N_RESTARTS             3557
-  PRIORITY               6
-  SYSLOG_IDENTIFIER      systemd
-  USER_UNIT              omarchy-speaker-loudness.service
+  MESSAGE                omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+  MESSAGE_ID             98e322203f7a4ed290d09fe03c09fe15
+  PRIORITY               3
   _BOOT_ID               30107f27d01e4e42b24846e4da81db1a
-  _CMDLINE               /usr/lib/systemd/systemd --user
-  ... every other field, verbatim
+  _COMM                  systemd
+  _HOSTNAME              host
+  _PID                   1
+  _SYSTEMD_UNIT          user@1000.service
+  _SYSTEMD_USER_UNIT     omarchy-speaker-loudness.service
+  _TRANSPORT             journal
+  __CURSOR               s=cl;i=3
+  __MONOTONIC_TIMESTAMP  4936375957000
+  __REALTIME_TIMESTAMP   1792142920277720
 
-Before (1 events within 5s)
-  17:19:29.505 | INFO     | service | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
-After (0 events within 5s)
+Before (2 events within 2m0s)
+  16:28:40.253 | INFO     | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 2148.
+  16:28:40.255 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
+
+After (3 events within 2m0s)
+  16:28:40.279 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+  16:28:41.280 | INFO     | service     | omarchy-speaker-loudness.service | Starting Omarchy speaker loudness compensation...
+  16:28:41.281 | INFO     | service     | omarchy-speaker-loudness.service | Stopped Omarchy speaker loudness compensation.
+
+Correlations (3)
+  inc_171ce20e78a2 restart-loop [high]
+    window inspected 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:33:40.25372Z
+    omarchy-speaker-loudness.service: 3 restart or failure events within 5m
+  inc_775419612656 failed-then-error [medium]
+    window inspected 2026-10-16T09:28:40.27772Z .. 2026-10-16T09:29:10.27772Z
+    omarchy-speaker-loudness.service: failed, then 1 error event(s) from the same unit within 30s
+  inc_5a685bcf67f9 pid-errors [low]
+    window inspected 2026-10-16T09:28:40.27772Z .. 2026-10-16T09:29:10.27772Z
+    pid 1: 2 error events within 30s
 
 Sources
-  systemd-journal: ok (journal is readable)
-
-Limitations
-  no following events found within the window
+  systemd-journal: ok (reading test/fixtures/regression/crash-loop.jsonl from HIBIKI_JOURNAL_FILE)
 ```
 
-An empty side is stated, never left blank: the limitation line says
-`no following events found within the window`. Nothing is elided from `raw`,
-only from this example.
+Both sides are counted, never left blank: the sample above read two events before
+and three after, inside the 2 minute `--context`. `Raw journal fields` is the
+whole record, nothing elided. The `window inspected` line is the window the rule
+looked at, which is not the `--context` above it.
+
+### incidents
+
+```bash
+hibiki incidents
+hibiki incidents --since 24h
+hibiki incidents --since 2h --window 30s
+hibiki incidents --severity error,critical
+hibiki incidents --service sshd.service
+hibiki incidents --since 24h --format json
+```
+
+`incidents` runs four fixed rules over the events of the window and prints what
+each one grouped. Every incident carries the rule that fired, its confidence, the
+window it inspected, one primary event and the events it grouped with it. The
+filters, `--since`, `--until`, `--limit` and `--boot` work as they do in
+`timeline`, and correlation runs over the result, after the limit.
+
+| Rule                | Fires when                                            | Default window | Confidence |
+| ------------------- | ----------------------------------------------------- | -------------- | ---------- |
+| `restart-loop`      | 3 or more restart or failure events of one unit       | 5m             | high       |
+| `failed-then-error` | a unit failed, then error events of the same unit     | 30s            | medium     |
+| `pid-errors`        | 2 or more error events of one pid                     | 30s            | low        |
+| `dependency-error`  | an error of one unit lands before another unit failed | 30s            | low        |
+
+`--window` overrides the four windows at once; `0`, the default, keeps the
+per-rule defaults, and a negative window is exit 2.
+
+```
+Incidents (3)
+
+  inc_171ce20e78a2 restart-loop [high]
+    window inspected 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:33:40.25372Z
+    reason omarchy-speaker-loudness.service: 3 restart or failure events within 5m
+    primary   16:28:40.253 | INFO     | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 2148.
+    related 2
+      16:28:40.277 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+      16:28:40.279 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+
+  inc_775419612656 failed-then-error [medium]
+    window inspected 2026-10-16T09:28:40.27772Z .. 2026-10-16T09:29:10.27772Z
+    reason omarchy-speaker-loudness.service: failed, then 1 error event(s) from the same unit within 30s
+    primary   16:28:40.277 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+    related 1
+      16:28:40.279 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+
+  inc_5a685bcf67f9 pid-errors [low]
+    window inspected 2026-10-16T09:28:40.27772Z .. 2026-10-16T09:29:10.27772Z
+    reason pid 1: 2 error events within 30s
+    primary   16:28:40.277 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+    related 1
+      16:28:40.279 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+covered: 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:28:41.28172Z
+
+Sources
+  systemd-journal: ok (reading test/fixtures/regression/crash-loop.jsonl from HIBIKI_JOURNAL_FILE)
+```
+
+An incident reports events that were observed together inside one window, with
+the rule and its confidence next to them. Nothing in the output says one event
+produced another.
+
+`--format json` writes the same envelope as `timeline`, with `incidents` in
+place of `events`:
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-18T05:58:38.114757391Z",
+  "covered_since": "2026-10-16T09:28:40.25372Z",
+  "covered_until": "2026-10-16T09:28:41.28172Z",
+  "truncated": false,
+  "next_cursor": null,
+  "sources": [
+    {
+      "name": "systemd-journal",
+      "available": true,
+      "detail": "reading test/fixtures/regression/crash-loop.jsonl from HIBIKI_JOURNAL_FILE"
+    }
+  ],
+  "limitations": [],
+  "incidents": [
+    {"id":"inc_171ce20e78a2","rule":"restart-loop","confidence":"high","reason":"omarchy-speaker-loudness.service: 3 restart or failure events within 5m","primary":{"schema_version":1,"id":"evt_7bfa3df5c761","correlation_ids":["inc_171ce20e78a2"], ...},"related":[{"id":"evt_7bfa3ff5c762","correlation_ids":["inc_171ce20e78a2","inc_5a685bcf67f9","inc_775419612656"], ...},{"id":"evt_7bfa40f5c762","correlation_ids":["inc_171ce20e78a2","inc_5a685bcf67f9","inc_775419612656"], ...}],"window_start":"2026-10-16T09:28:40.25372Z","window_end":"2026-10-16T09:33:40.25372Z"},
+    {"id":"inc_775419612656","rule":"failed-then-error","confidence":"medium","reason":"omarchy-speaker-loudness.service: failed, then 1 error event(s) from the same unit within 30s", ...},
+    {"id":"inc_5a685bcf67f9","rule":"pid-errors","confidence":"low","reason":"pid 1: 2 error events within 30s", ...}
+  ]
+}
+```
+
+`...` marks the rest of the event, which the command writes out in full; the
+field list is in [docs/event-schema.md](docs/event-schema.md).
+
+Zero incidents is exit 0, and the two empty answers stay apart. A
+`covered: nothing observed` line means no event was returned at all, while a
+`covered:` range means events were read and no rule fired.
+
+```
+Incidents (0)
+
+No incidents found.
+covered: 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:28:41.28172Z
+
+Sources
+  systemd-journal: ok (reading test/fixtures/regression/crash-loop.jsonl from HIBIKI_JOURNAL_FILE)
+```
 
 ### sources
 
@@ -279,9 +404,9 @@ for symptoms, causes, and what to do.
 
 - Process history is not reconstructable. The journal records that a process
   logged a line; it does not record what the process did between lines.
-- No correlation and no causality, deliberately. `inspect` shows what happened
-  before and after an event and says nothing about why. The correlation engine,
-  with explicit rules and evidence, is v0.3.0.
+- No causality, deliberately. `incidents` reports the events one named rule saw
+  inside one window, with the rule, its confidence and its evidence. No line of
+  the output says one event produced another.
 - No system state. `service.active_state` is `null` because a journal record
   cannot tell you the state of a unit now, only what it said then.
 - `--limit 0` holds the whole result in memory, which on a 24 hour window is
@@ -305,9 +430,10 @@ Layout and invariants: [docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
-- v0.3.0: correlation engine with rule ids, evidence, and explicit confidence.
+- v0.3.0 (shipped): correlation engine with rule ids, evidence, and explicit
+  confidence.
 - Later: more adapters, journal sizes above 2 GB, Debian and Fedora permission
   matrices.
 
-Status: v0.2.0. The journal adapter, event model, timeline engine, CLI, and TUI
-are in scope; the correlation engine is not.
+Status: v0.3.0. The journal adapter, event model, timeline engine, correlation
+engine, CLI, and TUI are in scope.

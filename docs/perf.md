@@ -1,7 +1,9 @@
 # Performance notes
 
 Measured on 2026-10-16, Arch Linux, AMD Ryzen 7 7840HS (16 threads), journal of
-907 MB with roughly 26 days of retention, systemd 261, Go 1.27.2.
+907 MB with roughly 26 days of retention, systemd 261, Go 1.27.2. The correlation
+figures below were measured on 2026-10-18 on the same machine, when the journal
+held 1008 MB.
 
 Every number here comes from a command that was actually run. Nothing is
 extrapolated.
@@ -15,6 +17,7 @@ extrapolated.
 | Memory, 10k events  | under 100 MB                          | 82 MB peak RSS, `--format json`           |
 | Cancellation        | the process stops after cancellation  | under 2 s after SIGINT, covered by tests  |
 | TUI navigation      | input response under 100 ms, loaded   | 36 us per frame at 10,000 events, p95 asserted |
+| Correlation pass    | under 500 ms over 10,000 events      | 14.9 ms for 4,520 incidents, 97 ms under `-race` |
 | Pagination          | the whole journal is never loaded     | see the cursor section below              |
 
 The memory figure is the peak RSS of the `hibiki` process, taken from
@@ -67,6 +70,32 @@ three orders of magnitude below the budget. Frame cost stays flat as the list
 grows because only the visible window is rendered: `listRows` walks from
 `offset` to `offset + rows`, never all 10,000 events.
 
+## Correlation
+
+```bash
+go test ./internal/correlation/ -run '^$' -bench BenchmarkRun10k -benchtime 100x -benchmem
+go test ./internal/correlation/ -run '^$' -bench BenchmarkRun10k -benchtime 100x -benchmem -race
+go test ./internal/correlation/ -run TestRunWithinBudget -v
+```
+
+| Run                            | ns/op      | B/op       | allocs/op |
+| ------------------------------ | ---------- | ---------- | --------- |
+| `BenchmarkRun10k`              | 14,734,190 | 32,695,180 | 64,264    |
+| `BenchmarkRun10k` with `-race` | 97,348,469 | 33,221,676 | 70,036    |
+
+`TestRunWithinBudget` builds the same 10,000 synthetic events over 200 units and
+40 time slots, refuses to time a run in which any of the four rules stayed
+silent, and then times one full `Run`: 4,520 incidents in 14.9 ms against the
+500 ms budget. The `-race` figure of 97 ms leaves roughly 5x headroom on this
+16 thread runner. The fixture is deliberately the expensive shape: 3,920 of its
+4,520 incidents come from `dependency-error` alone, and the other three rules
+contribute 200 each.
+
+The real journal tells the other side of that number. `hibiki incidents --since
+7d --limit 10000 --format json` returned 10,000 events and 1 incident, a
+`pid-errors` match, in 0.58 s at 79.1 MB peak RSS, so a quiet desktop never
+approaches the synthetic worst case.
+
 ## Where the memory went
 
 The first measurement of `--limit 10000 --format json` was 270 MB peak RSS,
@@ -102,6 +131,15 @@ warning: showing the first 200 events; continue with --cursor <base64>
 
 The cursor carries the sort key of the last returned event, so the journal is
 never loaded to continue a query: the next page starts from that key.
+
+Correlation holds both sides of that answer at once: the events, and the
+incident list that groups them. Measured on 2026-10-18,
+`hibiki incidents --since 24h --limit 0 --format json` returned 113,243 events
+and 5 incidents in 6.6 s at 737 MB to 820 MB peak RSS, where the same window
+through `timeline` alone cost 699 MB to 795 MB. That day's 24 hour window held
+more events than the 96,399 above, measured two days earlier, which is why both
+figures moved up; the range inside each pair is the collector, over four runs in
+fresh processes.
 
 ## Reproducing
 
