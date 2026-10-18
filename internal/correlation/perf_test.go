@@ -31,11 +31,10 @@ func perfFixture() []event.Event {
 	return evs
 }
 
-// The first five slots carry the work every rule needs: a failure followed by
-// two restarts, a second failure followed by an error from the same pid, and a
-// second unit of the same boot failing inside the 30s dependency window. Units
-// are staggered by 2s, which is what puts one unit's failure inside another
-// unit's window. The remaining slots are ordinary application warnings that no
+// The 2s stagger between units is what puts one unit's failure inside another
+// unit's 30s window, so dependency-error fires at all. Slot 4 sits one step
+// past the 30s window anchored at slot 0, so it joins dependency-error and
+// nothing else. The other 45 slots are ordinary application warnings that no
 // rule selects.
 func perfSlot(unit, slot int) event.Event {
 	boot := unit / perfBootSpan

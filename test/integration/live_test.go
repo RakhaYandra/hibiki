@@ -98,6 +98,16 @@ func TestLiveIncidentsCommand(t *testing.T) {
 		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
 	}
 
+	// The typed decode below cannot see a renamed key, so the array is looked up
+	// on the document itself.
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(res.stdout), &keys); err != nil {
+		t.Fatalf("stdout is not a JSON document: %v\n%s", err, res.stdout)
+	}
+	if _, ok := keys["incidents"]; !ok {
+		t.Fatalf("the document carries no incidents array:\n%s", res.stdout)
+	}
+
 	var doc struct {
 		SchemaVersion int `json:"schema_version"`
 		Incidents     []struct {
