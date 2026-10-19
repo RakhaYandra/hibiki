@@ -304,6 +304,73 @@ func TestRun_EqualTimestampsBreakByID(t *testing.T) {
 	}
 }
 
+func TestRun_WindowBoundariesAndUtcZone(t *testing.T) {
+	t.Run("a related error exactly at the window edge still matches", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("e1", baseUS+30_000_000, event.CategoryApplication, event.SeverityError, "api.service"),
+		}
+		got := Run(events, Options{})
+		if len(got) != 1 || got[0].Rule != "failed-then-error" || got[0].Primary.ID != "f1" {
+			t.Fatalf("edge case = %+v, want one failed-then-error incident over f1", got)
+		}
+	})
+
+	t.Run("a related error one microsecond past the window edge does not match", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("e1", baseUS+30_000_001, event.CategoryApplication, event.SeverityError, "api.service"),
+		}
+		if got := Run(events, Options{}); len(got) != 0 {
+			t.Errorf("past the edge = %d incidents, want 0", len(got))
+		}
+	})
+
+	t.Run("a second failure exactly at the suppression deadline is not re-emitted", func(t *testing.T) {
+		events := []event.Event{
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("e1", baseUS+5_000_000, event.CategoryApplication, event.SeverityError, "api.service"),
+			testEvent("f2", baseUS+30_000_000, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("e2", baseUS+35_000_000, event.CategoryApplication, event.SeverityError, "api.service"),
+		}
+		got := Run(events, Options{})
+		if len(got) != 1 {
+			t.Fatalf("deadline case = %d incidents, want exactly one (f2 suppressed at the deadline): %+v", len(got), got)
+		}
+		if got[0].Primary.ID != "f1" || got[0].Rule != "failed-then-error" {
+			t.Errorf("surviving incident = %+v, want f1's failed-then-error", got[0])
+		}
+	})
+
+	t.Run("window anchors are in UTC, forward and backward", func(t *testing.T) {
+		// failed-then-error anchors the window at the primary (forward).
+		forward := []event.Event{
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+			testEvent("e1", baseUS+5_000_000, event.CategoryApplication, event.SeverityError, "api.service"),
+		}
+		got := Run(forward, Options{})
+		if len(got) != 1 || got[0].Rule != "failed-then-error" {
+			t.Fatalf("forward = %+v, want one failed-then-error incident", got)
+		}
+		if got[0].WindowStart.Location() != time.UTC || got[0].WindowEnd.Location() != time.UTC {
+			t.Errorf("forward window zone = %v / %v, want UTC", got[0].WindowStart.Location(), got[0].WindowEnd.Location())
+		}
+
+		// dependency-error anchors the window ending at the primary (backward).
+		backward := []event.Event{
+			testEvent("d1", baseUS-10_000_000, event.CategoryApplication, event.SeverityError, "db.service"),
+			testEvent("f1", baseUS, event.CategoryService, event.SeverityError, "api.service"),
+		}
+		got = Run(backward, Options{})
+		if len(got) != 1 || got[0].Rule != "dependency-error" {
+			t.Fatalf("backward = %+v, want one dependency-error incident", got)
+		}
+		if got[0].WindowStart.Location() != time.UTC || got[0].WindowEnd.Location() != time.UTC {
+			t.Errorf("backward window zone = %v / %v, want UTC", got[0].WindowStart.Location(), got[0].WindowEnd.Location())
+		}
+	})
+}
+
 func TestRun_EmptyInput(t *testing.T) {
 	if got := Run(nil, Options{}); len(got) != 0 {
 		t.Errorf("Run(nil) returned %d incidents, want 0", len(got))

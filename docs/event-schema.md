@@ -45,6 +45,44 @@ coverage, because nothing was observed.
 
 A value that is unavailable is `null`, never an empty string.
 
+## Incident
+
+An incident is what one named correlation rule saw inside one window. The
+`incidents` command substitutes an `incidents` array for `events` in the same
+envelope, so the envelope head (`schema_version`, `generated_at`,
+`covered_since`/`covered_until`, `truncated`, `next_cursor`, `sources`,
+`limitations`) is shared between the two documents.
+
+| Field         | Type             | Rule                                                        |
+| ------------- | ---------------- | ----------------------------------------------------------- |
+| `id`          | string           | Stable id of the incident, derived from the rule, the       |
+|               |                  | primary event and the related event ids                     |
+| `rule`        | string           | The rule that fired: `restart-loop`, `failed-then-error`,   |
+|               |                  | `pid-errors` or `dependency-error`                          |
+| `confidence`  | string           | `high`, `medium` or `low`                                   |
+| `reason`      | string           | What was observed inside the window, never a statement of   |
+|               |                  | cause                                                       |
+| `primary`     | object           | The event the rule anchored its window on                   |
+| `related`     | array            | The events the rule grouped with the primary                |
+| `window_start`| RFC 3339         | Start of the rule's checked window, anchored on the primary |
+| `window_end`  | RFC 3339         | End of the rule's checked window                            |
+
+`window_start` and `window_end` describe the window the rule checked, anchored
+on the primary event: they are not an observed span from the first to the last
+event. `window_start` is the primary's timestamp (for `dependency-error` it is
+the primary's timestamp minus the window) and `window_end` is `window_start`
+plus the rule's window. Because they are a claim about what was checked, not
+what was seen, they can extend beyond the events the rule actually grouped.
+
+`covered_since` and `covered_until` in the envelope, by contrast, describe what
+was actually read: the earliest and latest event returned by the query.
+
+`inspect` also reports incidents, in its `correlations` array: the incidents
+the inspected event takes part in, either as the primary or among the related
+events. Each entry carries `id`, `rule`, `confidence`, `reason`, `primary`,
+`related`, `window_start` and `window_end`, shaped the same way as in
+`incidents`.
+
 `correlation_ids` holds the ids of the incidents that reference this event,
 either as the primary or among the related ones. In a document, only `incidents`
 and `inspect` populate it. `incidents` stamps the events each incident carries.

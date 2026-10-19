@@ -143,6 +143,11 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 	if err != nil {
 		return res, err
 	}
+	if f.Save != "" {
+		if err := writeEnvelopeFile(f.Save, res); err != nil {
+			return res, err
+		}
+	}
 	if f.Format == "json" {
 		return res, output.RenderJSON(cmd.OutOrStdout(), res)
 	}
@@ -150,8 +155,9 @@ func runQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, error) {
 }
 
 // fetchQuery is the whole query lifecycle up to the answer: filter, read,
-// snapshot, --save. A command that renders something else from the same events
-// (incidents) shares it, so both surfaces agree on when a query is unreadable.
+// snapshot. --save is handled by the command that owns the document: timeline
+// and events write the events envelope here, incidents writes its own document
+// from a single envelope so stdout and a --save file agree on generated_at.
 func fetchQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, time.Time, error) {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -180,11 +186,6 @@ func fetchQuery(cmd *cobra.Command, f *filterFlags) (timeline.Result, time.Time,
 	// user asked for is already in hand.
 	if _, err := saveSnapshot(res); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not save the query snapshot: %v\n", err)
-	}
-	if f.Save != "" {
-		if err := writeEnvelopeFile(f.Save, res); err != nil {
-			return res, now, err
-		}
 	}
 	return res, now, nil
 }

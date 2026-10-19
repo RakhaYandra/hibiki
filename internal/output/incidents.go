@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/RakhaYandra/hibiki/internal/correlation"
@@ -11,16 +12,32 @@ import (
 	"github.com/RakhaYandra/hibiki/internal/timeline"
 )
 
-// RenderIncidentsJSON streams the same envelope the timeline renders with the
-// incident list in place of the events, so a machine consumer reads both
-// documents the same way and the evidence inside each incident already carries
-// the incident ids that reference it.
-func RenderIncidentsJSON(w io.Writer, res timeline.Result, incs []correlation.Incident) error {
-	out, err := streamHead(w, NewEnvelope(res), "incidents")
+// RenderIncidentsJSON streams one incidents document from an envelope the
+// caller built, so stdout and a --save file render the same generated_at and
+// neither holds a second copy of the result in memory (PRD 14).
+func RenderIncidentsJSON(w io.Writer, env Envelope, incs []correlation.Incident) error {
+	out, err := streamHead(w, env, "incidents")
 	if err != nil {
 		return err
 	}
 	return streamArray(out, jsonIncidents(incs))
+}
+
+// SaveIncidentsJSON writes the same document RenderIncidentsJSON prints to the
+// file, from the same envelope so generated_at matches stdout byte for byte.
+func SaveIncidentsJSON(path string, env Envelope, incs []correlation.Incident) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("cannot write %s: %w", path, err)
+	}
+	if err := RenderIncidentsJSON(f, env, incs); err != nil {
+		f.Close()
+		return fmt.Errorf("cannot encode the result: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("cannot write %s: %w", path, err)
+	}
+	return nil
 }
 
 // A hand-built incident can arrive with a nil Related, which encoding/json

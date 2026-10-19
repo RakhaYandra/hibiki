@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -76,6 +77,88 @@ func TestIncidentsJSONHasIncidentsKey(t *testing.T) {
 			t.Errorf("incident %s must show its evidence", inc.ID)
 		}
 	}
+}
+
+type savedIncident struct {
+	ID         string `json:"id"`
+	Rule       string `json:"rule"`
+	Confidence string `json:"confidence"`
+	Primary    struct {
+		ID string `json:"id"`
+	} `json:"primary"`
+	WindowStart time.Time `json:"window_start"`
+	WindowEnd   time.Time `json:"window_end"`
+}
+
+type savedEnvelope struct {
+	SchemaVersion int             `json:"schema_version"`
+	GeneratedAt   string          `json:"generated_at"`
+	Incidents     []savedIncident `json:"incidents"`
+}
+
+// --save must write the same document the command prints: the incidents
+// envelope, one generated_at on stdout and in the file.
+func TestIncidentsSaveWritesTheSameDocument(t *testing.T) {
+	crashLoop(t)
+	path := filepath.Join(t.TempDir(), "hibiki-saved.json")
+	res := runCLI(t, cliDeps{now: testNow}, "incidents", "--since", "24h", "--format", "json", "--save", path)
+	if res.code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", res.code, res.stderr)
+	}
+	var stdout incidentsView
+	if err := json.Unmarshal([]byte(res.stdout), &stdout); err != nil {
+		t.Fatalf("stdout is not a Hibiki incidents document: %v\n%s", err, res.stdout)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved savedEnvelope
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("saved file is not a Hibiki incidents document: %v\n%s", err, string(data))
+	}
+	if saved.SchemaVersion != event.SchemaVersion {
+		t.Errorf("schema_version = %d, want %d", saved.SchemaVersion, event.SchemaVersion)
+	}
+	if len(saved.Incidents) != len(stdout.Incidents) {
+		t.Fatalf("saved incidents = %d, want %d:\n%s", len(saved.Incidents), len(stdout.Incidents), res.stdout)
+	}
+	want := []string{"restart-loop", "failed-then-error", "pid-errors"}
+	for i, inc := range saved.Incidents {
+		wantInc := stdout.Incidents[i]
+		if inc.ID != wantInc.ID {
+			t.Errorf("saved incident %d id = %q, want %q", i, inc.ID, wantInc.ID)
+		}
+		if inc.Rule != wantInc.Rule {
+			t.Errorf("saved incident %d rule = %q, want %q", i, inc.Rule, wantInc.Rule)
+		}
+		if inc.Confidence != wantInc.Confidence {
+			t.Errorf("saved incident %d confidence = %q, want %q", i, inc.Confidence, wantInc.Confidence)
+		}
+		if inc.Primary.ID != wantInc.Primary.ID {
+			t.Errorf("saved incident %d primary id = %q, want %q", i, inc.Primary.ID, wantInc.Primary.ID)
+		}
+		if !slices.Contains(want, inc.Rule) {
+			t.Errorf("unexpected rule %q", inc.Rule)
+		}
+		if inc.WindowStart.IsZero() || inc.WindowEnd.IsZero() {
+			t.Errorf("saved incident %s lost its inspected window", inc.ID)
+		}
+	}
+	if saved.GeneratedAt != stdoutGeneratedAt(t, res.stdout) {
+		t.Errorf("saved generated_at = %q, want the one stdout printed %q", saved.GeneratedAt, stdoutGeneratedAt(t, res.stdout))
+	}
+}
+
+func stdoutGeneratedAt(t *testing.T, stdout string) string {
+	t.Helper()
+	var head struct {
+		GeneratedAt string `json:"generated_at"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &head); err != nil {
+		t.Fatalf("stdout is not a Hibiki document: %v\n%s", err, stdout)
+	}
+	return head.GeneratedAt
 }
 
 func TestIncidentsTextListsReasons(t *testing.T) {

@@ -65,6 +65,9 @@ func crashLoopEvents(t *testing.T) []event.Event {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if len(evs) != 6 {
+		t.Fatalf("fixture events = %d, want the six of crash-loop.jsonl", len(evs))
+	}
 	return evs
 }
 
@@ -130,8 +133,11 @@ func TestDetailExplainsEachIncidentOnItsOwnLine(t *testing.T) {
 		if !strings.HasPrefix(line, "correlation ") {
 			continue
 		}
-		if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "  ") || !strings.Contains(lines[i+1], "within") {
-			t.Fatalf("line %d = %q has no indented reason after it:\n%s", i, line, strings.Join(lines, "\n"))
+		// The window inspected line now sits between the correlation line and
+		// its reason; the reason is what explains the incident.
+		if i+2 >= len(lines) || !strings.HasPrefix(lines[i+1], "    window inspected ") ||
+			!strings.HasPrefix(lines[i+2], "  ") || !strings.Contains(lines[i+2], "within") {
+			t.Fatalf("line %d = %q has no window line and indented reason after it:\n%s", i, line, strings.Join(lines, "\n"))
 		}
 		explained++
 	}

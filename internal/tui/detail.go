@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -27,6 +28,7 @@ type detailState struct {
 type detailDoneMsg struct {
 	token int
 	ctx   inspect.Context
+	incs  []correlation.Incident
 	err   error
 }
 
@@ -51,21 +53,23 @@ func (m *Model) openDetail() tea.Cmd {
 	return func() tea.Msg {
 		defer close(finished)
 		out, err := inspect.ForEvent(ctx, srcs, ev, window)
-		return detailDoneMsg{token: token, ctx: out, err: err}
+		// The correlation runs in the command goroutine, off the frame path;
+		// Update only stores the incidents the command already computed.
+		out, incs := inspect.Correlate(out)
+		return detailDoneMsg{token: token, ctx: out, incs: incs, err: err}
 	}
 }
 
-// The correlation runs once per loaded context: the frame path only reads the
-// incidents it already has.
+// The correlation ran off the frame path in the command above; the frame path
+// only reads the incidents it already has.
 func (m *Model) applyDetailDone(msg detailDoneMsg) {
 	if m.detail == nil || msg.token != m.detail.token {
 		return
 	}
 	m.detail.loading = false
 	m.detail.err = msg.err
-	out, incs := inspect.Correlate(msg.ctx)
-	m.detail.ctx = &out
-	m.detail.incs = incs
+	m.detail.ctx = &msg.ctx
+	m.detail.incs = msg.incs
 }
 
 func (m *Model) closeDetail() {
@@ -182,6 +186,7 @@ func (m Model) detailLines() []string {
 	}
 	for _, inc := range d.incs {
 		lines = append(lines, fmt.Sprintf("correlation %s %s [%s]", inc.ID, inc.Rule, inc.Confidence))
+		lines = append(lines, fmt.Sprintf("    window inspected %s .. %s", inc.WindowStart.UTC().Format(time.RFC3339Nano), inc.WindowEnd.UTC().Format(time.RFC3339Nano)))
 		lines = append(lines, "  "+oneLine(inc.Reason))
 	}
 	if len(d.ctx.Limitations) > 0 {

@@ -65,25 +65,39 @@ func TestRunWithinBudget(t *testing.T) {
 		t.Fatalf("events = %d, want the fixture loaded with %d", len(events), perfEvents)
 	}
 
+	start := time.Now()
 	incs := Run(events, Options{})
+	elapsed := time.Since(start)
 	if len(incs) == 0 {
 		t.Fatalf("Run produced no incidents from the fixture, so the budget would time an empty run")
 	}
-	fired := map[string]bool{}
+
+	counts := map[string]int{}
 	for _, inc := range incs {
-		fired[inc.Rule] = true
+		counts[inc.Rule]++
+	}
+	want := map[string]int{
+		"restart-loop":      200,
+		"failed-then-error": 200,
+		"pid-errors":        200,
+		"dependency-error":  3920,
+	}
+	for rule, wantCount := range want {
+		if got := counts[rule]; got != wantCount {
+			t.Errorf("rule %q produced %d incidents, want %d", rule, got, wantCount)
+		}
+	}
+	if got := len(incs); got != 4520 {
+		t.Errorf("total incidents = %d, want 4520", got)
 	}
 	for _, r := range rules {
-		if !fired[r.id] {
+		if counts[r.id] == 0 {
 			t.Errorf("rule %q never fired on the fixture, so the budget would time a partial run", r.id)
 		}
 	}
 
-	start := time.Now()
-	Run(events, Options{})
-	elapsed := time.Since(start)
-	t.Logf("Run over %d events and %d units produced %d incidents in %s, budget %s",
-		len(events), perfUnits, len(incs), elapsed, perfBudget)
+	t.Logf("Run over %d events and %d units produced %d incidents (%v) in %s, budget %s",
+		len(events), perfUnits, len(incs), counts, elapsed, perfBudget)
 	if elapsed >= perfBudget {
 		t.Errorf("Run over %d events took %s, budget %s", len(events), elapsed, perfBudget)
 	}

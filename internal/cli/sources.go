@@ -66,7 +66,7 @@ func runSources(ctx context.Context, w io.Writer, check bool) error {
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "process")
-	fmt.Fprintln(out, "  status    not available in v0.1.0")
+	fmt.Fprintln(out, "  status    not available")
 	fmt.Fprintln(out, "  detail    process history cannot be reconstructed from the journal; a process is only observable while it runs (PRD 6.1)")
 	if err := out.Flush(); err != nil {
 		return err

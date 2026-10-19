@@ -92,13 +92,15 @@ func TestWideLayoutSplitsListAndDetail(t *testing.T) {
 		t.Fatalf("layout = %v, want the split layout at 120 columns", opened.layout())
 	}
 
+	correlated, incs := inspect.Correlate(inspect.Context{
+		Event:  evs[1],
+		Before: evs[:1],
+		After:  evs[2:3],
+	})
 	withContext, _ := opened.Update(detailDoneMsg{
 		token: opened.detail.token,
-		ctx: inspect.Context{
-			Event:  evs[1],
-			Before: evs[:1],
-			After:  evs[2:3],
-		},
+		ctx:   correlated,
+		incs:  incs,
 	})
 	frame := withContext.(Model).View()
 

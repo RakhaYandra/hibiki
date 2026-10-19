@@ -103,10 +103,11 @@ func TestRenderIncidentsJSONHeadMatchesEnvelope(t *testing.T) {
 
 	res := incidentSampleResult()
 	var envelopeDoc, incidentsDoc bytes.Buffer
+	env := NewEnvelope(res)
 	if err := RenderJSON(&envelopeDoc, res); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenderIncidentsJSON(&incidentsDoc, res, incidentSample(t)); err != nil {
+	if err := RenderIncidentsJSON(&incidentsDoc, env, incidentSample(t)); err != nil {
 		t.Fatal(err)
 	}
 	envelopeKeys := topLevelKeys(t, envelopeDoc.String())
@@ -127,14 +128,21 @@ func TestRenderIncidentsJSONHeadMatchesEnvelope(t *testing.T) {
 
 func TestRenderIncidentsJSONCarriesStampedEvidence(t *testing.T) {
 	incs := incidentSample(t)
+	res := incidentSampleResult()
+	env := NewEnvelope(res)
 	var buf bytes.Buffer
-	if err := RenderIncidentsJSON(&buf, incidentSampleResult(), incs); err != nil {
+	if err := RenderIncidentsJSON(&buf, env, incs); err != nil {
 		t.Fatal(err)
 	}
 	var view struct {
 		Incidents []struct {
-			ID      string `json:"id"`
-			Primary struct {
+			ID          string `json:"id"`
+			Rule        string `json:"rule"`
+			Confidence  string `json:"confidence"`
+			Reason      string `json:"reason"`
+			WindowStart string `json:"window_start"`
+			WindowEnd   string `json:"window_end"`
+			Primary     struct {
 				ID             string   `json:"id"`
 				CorrelationIDs []string `json:"correlation_ids"`
 			} `json:"primary"`
@@ -150,7 +158,37 @@ func TestRenderIncidentsJSONCarriesStampedEvidence(t *testing.T) {
 	if len(view.Incidents) != len(incs) {
 		t.Fatalf("incidents = %d, want %d", len(view.Incidents), len(incs))
 	}
-	for _, inc := range view.Incidents {
+	for i, inc := range incs {
+		got := view.Incidents[i]
+		if got.ID != inc.ID {
+			t.Errorf("incident %d id = %q, want %q", i, got.ID, inc.ID)
+		}
+		if got.Rule != inc.Rule {
+			t.Errorf("incident %d rule = %q, want %q", i, got.Rule, inc.Rule)
+		}
+		if got.Confidence != string(inc.Confidence) {
+			t.Errorf("incident %d confidence = %q, want %q", i, got.Confidence, inc.Confidence)
+		}
+		if got.Reason != inc.Reason {
+			t.Errorf("incident %d reason = %q, want %q", i, got.Reason, inc.Reason)
+		}
+		if got.Primary.ID != inc.Primary.ID {
+			t.Errorf("incident %d primary id = %q, want %q", i, got.Primary.ID, inc.Primary.ID)
+		}
+		start, err := time.Parse(time.RFC3339Nano, got.WindowStart)
+		if err != nil {
+			t.Fatalf("incident %d window_start %q is not RFC3339Nano: %v", i, got.WindowStart, err)
+		}
+		if !start.Equal(inc.WindowStart) {
+			t.Errorf("incident %d window_start = %v, want %v", i, start, inc.WindowStart)
+		}
+		end, err := time.Parse(time.RFC3339Nano, got.WindowEnd)
+		if err != nil {
+			t.Fatalf("incident %d window_end %q is not RFC3339Nano: %v", i, got.WindowEnd, err)
+		}
+		if !end.Equal(inc.WindowEnd) {
+			t.Errorf("incident %d window_end = %v, want %v", i, end, inc.WindowEnd)
+		}
 		if !containsID(inc.Primary.CorrelationIDs, inc.ID) {
 			t.Errorf("primary %s of %s carries %v", inc.Primary.ID, inc.ID, inc.Primary.CorrelationIDs)
 		}
@@ -164,7 +202,7 @@ func TestRenderIncidentsJSONCarriesStampedEvidence(t *testing.T) {
 
 func TestRenderIncidentsJSONEmptyResultIsValid(t *testing.T) {
 	var buf bytes.Buffer
-	if err := RenderIncidentsJSON(&buf, timeline.Result{}, []correlation.Incident{}); err != nil {
+	if err := RenderIncidentsJSON(&buf, NewEnvelope(timeline.Result{}), []correlation.Incident{}); err != nil {
 		t.Fatal(err)
 	}
 	var m map[string]any
@@ -199,7 +237,7 @@ func TestRenderIncidentsJSONNilRelatedIsAnArray(t *testing.T) {
 		WindowEnd:   sampleEvent().Timestamp,
 	}}
 	var buf bytes.Buffer
-	if err := RenderIncidentsJSON(&buf, sampleResult(), hand); err != nil {
+	if err := RenderIncidentsJSON(&buf, NewEnvelope(sampleResult()), hand); err != nil {
 		t.Fatal(err)
 	}
 	var view struct {
@@ -222,12 +260,13 @@ func TestRenderIncidentsJSONNilRelatedIsAnArray(t *testing.T) {
 
 func TestRenderIncidentsJSONKeepsTheEngineIncidentShape(t *testing.T) {
 	incs := incidentSample(t)
+	res := incidentSampleResult()
 	engine, err := json.Marshal(incs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if err := RenderIncidentsJSON(&buf, incidentSampleResult(), incs); err != nil {
+	if err := RenderIncidentsJSON(&buf, NewEnvelope(res), incs); err != nil {
 		t.Fatal(err)
 	}
 	var doc struct {

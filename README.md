@@ -7,12 +7,14 @@ Hibiki finds the order of events and the evidence for them. It never claims that
 two events near in time caused each other.
 
 ```console
-$ hibiki timeline --since 30m
-17:19:28.503 | INFO     | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 3542.
-17:19:28.505 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
-17:19:28.530 | WARNING  | service     | - | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
-17:19:28.531 | WARNING  | service     | - | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
-covered: 2026-10-16T10:19:28.503776Z .. 2026-10-16T10:19:28.531472Z
+$ HIBIKI_JOURNAL_FILE=test/fixtures/regression/crash-loop.jsonl hibiki timeline --since 2026-10-16T00:00:00Z --until 2026-10-16T23:59:59Z
+16:28:40.253 | INFO     | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Scheduled restart job, restart counter is at 2148.
+16:28:40.255 | INFO     | service     | omarchy-speaker-loudness.service | Started Omarchy speaker loudness compensation.
+16:28:40.277 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+16:28:40.279 | ERROR    | service     | omarchy-speaker-loudness.service | omarchy-speaker-loudness.service: Failed with result 'exit-code'.
+16:28:41.280 | INFO     | service     | omarchy-speaker-loudness.service | Starting Omarchy speaker loudness compensation...
+16:28:41.281 | INFO     | service     | omarchy-speaker-loudness.service | Stopped Omarchy speaker loudness compensation.
+covered: 2026-10-16T09:28:40.25372Z .. 2026-10-16T09:28:41.28172Z
 ```
 
 ## Install
@@ -41,11 +43,11 @@ hibiki
 └── version
 ```
 
-The `inspect` and `incidents` samples were produced with
+The `timeline`, `inspect` and `incidents` samples were produced with
 `HIBIKI_JOURNAL_FILE=test/fixtures/regression/crash-loop.jsonl` set, so the
-output in those two sections is the fixture in this repository and not a real
-journal. The `sources`, `doctor` and `tui` samples come from a live journal on a
-real machine.
+output in those three sections is the fixture in this repository and not a real
+journal. The `sources` sample below is also fixture output. The `doctor` and
+`tui` samples come from a live journal on a real machine.
 
 ### timeline
 
@@ -169,7 +171,7 @@ looked at, which is not the `--context` above it.
 
 ```bash
 hibiki incidents
-hibiki incidents --since 24h
+hibiki incidents --since 2026-10-16T00:00:00Z --until 2026-10-16T23:59:59Z
 hibiki incidents --since 2h --window 30s
 hibiki incidents --severity error,critical
 hibiki incidents --service sshd.service
@@ -181,6 +183,10 @@ each one grouped. Every incident carries the rule that fired, its confidence, th
 window it inspected, one primary event and the events it grouped with it. The
 filters, `--since`, `--until`, `--limit` and `--boot` work as they do in
 `timeline`, and correlation runs over the result, after the limit.
+
+The sample below was produced with `--since 2026-10-16T00:00:00Z --until 2026-10-16T23:59:59Z` against the
+crash-loop fixture; `--since 24h` returns no incidents against it because the
+fixture's records are two days old.
 
 | Rule                | Fires when                                            | Default window | Confidence |
 | ------------------- | ----------------------------------------------------- | -------------- | ---------- |
@@ -279,13 +285,13 @@ hibiki sources
 ```console
 systemd-journal
   status    available
-  detail    journal is readable
-  coverage  2026-09-20T07:38:06.138Z .. 2026-10-16T10:03:23.781Z
+  detail    reading test/fixtures/regression/crash-loop.jsonl from HIBIKI_JOURNAL_FILE
+  coverage  2026-10-16T09:28:40.25372Z .. 2026-10-16T09:28:40.25372Z
   notes     read only; every journal field is preserved verbatim
 
 process
-  status    not available in v0.1.0
-  detail    process history cannot be reconstructed from the journal; a process is only observable while it runs
+  status    not available
+  detail    process history cannot be reconstructed from the journal; a process is only observable while it runs (PRD 6.1)
 ```
 
 The same report doubles as a probe: `hibiki sources --check` prints everything

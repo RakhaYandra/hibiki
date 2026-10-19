@@ -129,6 +129,13 @@ A `covered:` range means events were read and no rule fired.
 `covered: nothing observed` means no event came back at all, so no rule ran over
 anything. Both are exit 0: an empty result is a successful query.
 
+## `--save` writes the same document the command prints
+
+`hibiki incidents --format json --save F` writes the same incidents document it
+prints to stdout: an envelope whose top-level array is `incidents`, with the
+same `generated_at` on stdout and in `F`. `timeline` and `events` keep writing
+the events envelope to `F`, so one command always produces one document.
+
 Check, in this order:
 
 1. Is the window wide enough for the rule? `restart-loop` takes the longest run
